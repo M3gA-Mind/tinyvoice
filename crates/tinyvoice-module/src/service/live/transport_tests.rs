@@ -7,6 +7,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use tinybus::{broker::Broker, transport::memory::MemoryBus};
 use tinyvoice_bus::live::{ServerFrame, TransportFrame, transport::LiveBindTransportRequest};
 
+#[derive(Clone, Copy, Default)]
+enum DeliveryMode {
+    #[default]
+    Accept,
+    LoseFirstReply,
+    Reject,
+}
+
 #[derive(Clone, Default)]
 struct Socket {
     committed: Arc<tokio::sync::Mutex<HashSet<String>>>,
@@ -15,10 +23,9 @@ struct Socket {
     polls: Arc<tokio::sync::Mutex<usize>>,
     closes: Arc<AtomicUsize>,
     closed: Arc<tokio::sync::Notify>,
-    first_reply_lost: bool,
+    delivery: DeliveryMode,
     unresponsive_close: bool,
     invalid_sequence: bool,
-    reject_delivery: bool,
 }
 
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.LiveTransport")]
@@ -38,13 +45,13 @@ impl Socket {
         request: DeliverLiveEffectsRequest,
     ) -> tinybus::Result<DeliverLiveEffectsReply> {
         let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
-        if self.reject_delivery {
+        if matches!(self.delivery, DeliveryMode::Reject) {
             return Ok(DeliverLiveEffectsReply { delivered: false });
         }
         if self.committed.lock().await.insert(request.delivery_id) {
             self.effects.lock().await.extend(request.outputs);
         }
-        if self.first_reply_lost && attempt == 0 {
+        if matches!(self.delivery, DeliveryMode::LoseFirstReply) && attempt == 0 {
             return Err(tinybus::Error::failed(
                 "fixture lost acknowledgement after commit",
             ));
@@ -97,7 +104,7 @@ async fn fixture(
 async fn lost_delivery_reply_reuses_identity_and_preserves_order_without_duplicate_persistence()
 -> tinybus::Result<()> {
     let socket = Socket {
-        first_reply_lost: true,
+        delivery: DeliveryMode::LoseFirstReply,
         ..Socket::default()
     };
     let (sessions, _module, _host, handle, lease) = fixture(socket.clone()).await?;
@@ -292,7 +299,7 @@ async fn portable_transport_controls_preserve_native_input_and_ignore_late_nonco
 async fn rejected_delivery_retries_boundedly_without_persisting_or_dispatching_input()
 -> tinybus::Result<()> {
     let socket = Socket {
-        reject_delivery: true,
+        delivery: DeliveryMode::Reject,
         ..Socket::default()
     };
     let (sessions, module, _host, handle, lease) = fixture(socket.clone()).await?;

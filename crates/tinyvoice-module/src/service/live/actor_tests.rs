@@ -260,3 +260,79 @@ async fn malformed_finish_endpoint_cannot_acknowledge_host_cleanup() -> tinybus:
     assert_eq!(cleanup.finishes.load(Ordering::SeqCst), 0);
     Ok(())
 }
+
+#[derive(Debug)]
+struct IdleProvider {
+    capabilities: tinyagents_live::tinyliveagents::Capabilities,
+    stopped: Arc<tokio::sync::Notify>,
+}
+struct ProviderStopped(Arc<tokio::sync::Notify>);
+impl Drop for ProviderStopped {
+    fn drop(&mut self) {
+        self.0.notify_one();
+    }
+}
+#[async_trait::async_trait]
+impl tinyagents_live::tinyliveagents::LiveProvider for IdleProvider {
+    fn id(&self) -> &'static str {
+        "fixture-idle"
+    }
+    fn capabilities(&self) -> tinyagents_live::tinyliveagents::Capabilities {
+        self.capabilities
+    }
+    async fn connect(
+        &self,
+        _config: tinyagents_live::tinyliveagents::LiveConfig,
+    ) -> tinyagents_live::tinyliveagents::Result<tinyagents_live::tinyliveagents::LiveSession> {
+        let (commands, receive_commands) = tokio::sync::mpsc::channel(8);
+        let (events, receive_events) = tokio::sync::mpsc::channel(8);
+        let stopped = self.stopped.clone();
+        let task = tokio::spawn(async move {
+            let _guard = ProviderStopped(stopped);
+            let _channels = (events, receive_commands);
+            std::future::pending::<()>().await;
+        });
+        Ok(
+            tinyagents_live::tinyliveagents::LiveSession::from_channels(commands, receive_events)
+                .with_task(task),
+        )
+    }
+}
+
+#[tokio::test]
+async fn cancelling_an_active_idle_session_terminates_the_native_provider_driver()
+-> anyhow::Result<()> {
+    let (module, _host, port, cleanup) = cleanup_fixture(false).await?;
+    let mut request: LiveStartRequest = serde_json::from_str(include_str!("fixtures/start.json"))?;
+    request.tool_port = port;
+    let mut prepared = super::super::prepare::prepare(&request, &module)?;
+    let stopped = Arc::new(tokio::sync::Notify::new());
+    prepared.provider = Box::new(IdleProvider {
+        capabilities: prepared.provider.capabilities(),
+        stopped: stopped.clone(),
+    });
+    let lease = Arc::new(Lease::new());
+    let actor = tokio::spawn(run(lease.clone(), request, prepared, module));
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if lease
+                .phase
+                .lock()
+                .map_err(|_| anyhow::anyhow!("fixture lock"))?
+                .state
+                == LiveState::Running
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+    tokio::task::yield_now().await;
+    lease.cancel();
+    actor.await?;
+    tokio::time::timeout(Duration::from_secs(1), stopped.notified()).await?;
+    assert_eq!(cleanup.finishes.load(Ordering::SeqCst), 1);
+    Ok(())
+}
