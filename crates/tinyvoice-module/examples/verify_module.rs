@@ -68,26 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(io::Error::other("capture manifest differs from contract").into());
     }
     verify_relay_turn(&proxy).await?;
-    let start: tinyvoice_bus::live::PreparedLiveInput = proxy
-        .call(
-            tinyvoice_bus::names::methods::PREPARE_LIVE_INPUT,
-            (tinyvoice_bus::live::PrepareLiveInputRequest {
-                awaiting_start: true,
-                frame: tinyvoice_bus::live::TransportFrame::Text {
-                    text: r#"{"type":"start","client_id":"client"}"#.into(),
-                },
-            },),
-        )
-        .await?;
-    if !matches!(
-        start,
-        tinyvoice_bus::live::PreparedLiveInput::Control(tinyvoice_bus::live::ClientFrame::Start {
-            input_sample_rate: 16_000,
-            ..
-        })
-    ) {
-        return Err(io::Error::other("module changed default live start framing").into());
-    }
+    verify_live_input(&proxy).await?;
     verify_recording_summary(&proxy).await?;
     // Default-denied permission must reject before any native device is opened.
     let denied: tinyvoice_bus::capture::CaptureResult<tinyvoice_bus::capture::CaptureHandle> =
@@ -392,6 +373,30 @@ async fn verify_relay_turn(proxy: &tinybus::Proxy) -> Result<(), Box<dyn std::er
         || prepared.history != vec![("user".into(), "  Read: hello 世界 ".into())]
     {
         return Err(io::Error::other("compiled relay preparation changed text semantics").into());
+    }
+    Ok(())
+}
+
+async fn verify_live_input(proxy: &tinybus::Proxy) -> Result<(), Box<dyn std::error::Error>> {
+    let start: tinyvoice_bus::live::PreparedLiveInput = proxy
+        .call(
+            tinyvoice_bus::names::methods::PREPARE_LIVE_INPUT,
+            (tinyvoice_bus::live::PrepareLiveInputRequest {
+                awaiting_start: true,
+                frame: tinyvoice_bus::live::TransportFrame::Text {
+                    text: r#"{"type":"start","client_id":"client"}"#.into(),
+                },
+            },),
+        )
+        .await?;
+    if !matches!(
+        start,
+        tinyvoice_bus::live::PreparedLiveInput::Control(tinyvoice_bus::live::ClientFrame::Start {
+            input_sample_rate: 16_000,
+            ..
+        })
+    ) {
+        return Err(io::Error::other("module changed default live start framing").into());
     }
     Ok(())
 }

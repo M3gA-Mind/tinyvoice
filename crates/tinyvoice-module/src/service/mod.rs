@@ -4,6 +4,7 @@
 #[path = "mod_tests.rs"]
 mod test;
 
+mod live;
 mod relay;
 
 use base64::Engine as _;
