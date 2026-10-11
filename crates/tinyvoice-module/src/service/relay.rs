@@ -26,7 +26,7 @@ impl Write for SizeLimit {
     }
 }
 
-fn fits(value: &impl Serialize, limit: usize) -> bool {
+pub(super) fn fits(value: &impl Serialize, limit: usize) -> bool {
     serde_json::to_writer(SizeLimit { remaining: limit }, value).is_ok()
 }
 

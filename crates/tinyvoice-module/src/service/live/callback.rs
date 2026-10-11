@@ -85,7 +85,13 @@ impl ToolDispatch<(), ()> for CallbackTool {
             arguments,
             prefer_markdown: options.prefer_markdown,
         };
+        if !super::super::relay::fits(&request, 1024 * 1024) {
+            anyhow::bail!("live tool callback request exceeds its serialized limit");
+        }
         let reply: ExecuteLiveToolReply = self.proxy.call(TOOL_CALLBACK_METHOD, (request,)).await?;
+        if !super::super::relay::fits(&reply, 1024 * 1024) {
+            anyhow::bail!("live tool callback result exceeds its serialized limit");
+        }
         // Preserve the complete canonical result and its reported-error flag.
         // A malformed result fails dispatch instead of synthesizing success.
         Ok(serde_json::from_value(reply.result)?)

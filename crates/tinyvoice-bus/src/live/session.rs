@@ -9,12 +9,14 @@ use super::{ServerFrame, TranscriptRole};
 pub const TOOL_CALLBACK_INTERFACE: &str = "ai.tinyhumans.tinyvoice.LiveTools";
 /// The only method invoked on a live tool callback endpoint.
 pub const TOOL_CALLBACK_METHOD: &str = "ExecuteLiveTool";
+/// Idempotently revoke a known context and cancel its host-owned work.
+pub const FINISH_CALLBACK_METHOD: &str = "FinishLiveContext";
 
 /// An opaque live lease, reserved before provider connection begins.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LiveHandle {
     /// Unpredictable module-generated lease identity.
-    pub id: u128,
+    pub id: String,
 }
 
 /// Connection state, independent of host permissions or UI.
@@ -265,6 +267,8 @@ pub struct LiveStartRequest {
     pub provider: String,
     /// Host transcript identity presented to the client.
     pub thread_id: String,
+    /// Host-selected maximum provider tool calls for this session.
+    pub max_tool_calls: u32,
     /// Host-selected outer tool-call timeout in milliseconds.
     pub tool_timeout_ms: u64,
     /// Host-selected connection timeout in milliseconds.
@@ -312,8 +316,29 @@ pub struct LiveSendRequest {
 }
 
 /// Stop, release or inspect a previously reserved session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LiveHandleRequest {
     /// Opaque session lease.
     pub handle: LiveHandle,
+}
+
+/// Idempotent cleanup of a previously registered host execution context.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FinishLiveContextRequest {
+    /// Known authority token; an unknown token must never create a context.
+    pub context_token: String,
+}
+
+impl std::fmt::Debug for FinishLiveContextRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FinishLiveContextRequest")
+            .finish_non_exhaustive()
+    }
+}
+
+/// Cleanup acknowledgement; already finished known contexts remain successful.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FinishLiveContextReply {
+    /// Whether the known context is closed and its owned work has stopped.
+    pub finished: bool,
 }
