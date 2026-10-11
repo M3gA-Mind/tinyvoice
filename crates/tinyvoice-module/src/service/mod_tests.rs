@@ -675,8 +675,7 @@ async fn native_capture_members_own_resources_and_return_bounded_wav_batches() -
 {
     use tinyvoice_bus::capture::{
         AudioOutput, CaptureError, CaptureHandle, CaptureResult, ReadAudioRequest,
-        RecordingFinishRequest, RecordingStartRequest, RecordingSummary,
-        RecordingSummaryRequest,
+        RecordingFinishRequest, RecordingStartRequest, RecordingSummary, RecordingSummaryRequest,
     };
     let bus = MemoryBus::new();
     let task = Broker::new().spawn(bus.clone());

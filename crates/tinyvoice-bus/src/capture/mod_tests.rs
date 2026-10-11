@@ -60,12 +60,12 @@ fn recording_summary_is_additive_and_finish_keeps_its_wire_shape() -> Result<(),
     let handle = CaptureHandle("lease".into());
     let finish = RecordingFinishRequest {
         handle: handle.clone(),
-        gate_threshold: 0.002,
+        gate_threshold: 0.25,
     };
     let finish_wire = serde_json::to_value(finish)?;
     assert_eq!(
         finish_wire,
-        serde_json::json!({"handle":"lease", "gate_threshold":0.002})
+        serde_json::json!({"handle":"lease", "gate_threshold":0.25})
     );
 
     let request = RecordingSummaryRequest {

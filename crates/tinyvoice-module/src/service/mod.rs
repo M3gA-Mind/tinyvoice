@@ -261,8 +261,9 @@ impl VoiceService {
     async fn recording_summary(
         &self,
         request: tinyvoice_bus::capture::RecordingSummaryRequest,
-    ) -> TinyBusResult<tinyvoice_bus::capture::CaptureResult<tinyvoice_bus::capture::RecordingSummary>>
-    {
+    ) -> TinyBusResult<
+        tinyvoice_bus::capture::CaptureResult<tinyvoice_bus::capture::RecordingSummary>,
+    > {
         Ok(self.capture.summary(&request))
     }
     /// Stop and discard a native recording.
