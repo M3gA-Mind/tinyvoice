@@ -94,6 +94,9 @@ pub struct LiveToolDeclaration {
     pub description: String,
     /// Provider-visible JSON argument schema.
     pub parameters: Value,
+    /// Preserve the host tool's compact result rendering preference.
+    #[serde(default)]
+    pub prefer_markdown: bool,
 }
 
 /// Port into the host's saved policy and approval context.
