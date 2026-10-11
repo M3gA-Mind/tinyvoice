@@ -56,6 +56,7 @@ pub fn prepare_turn(request: &RelayTurnRequest) -> PreparedRelayTurn {
     }
 }
 
+/// Regressions for the migrated relay text contract.
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
