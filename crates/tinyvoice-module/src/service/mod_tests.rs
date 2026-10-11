@@ -1105,9 +1105,35 @@ async fn live_callback_access_does_not_retain_the_module_bus_name_after_drop() {
     drop(service);
     tokio::time::timeout(std::time::Duration::from_secs(1), async {
         loop {
-            let reply: tinybus::Result<serde_json::Value> = proxy.call("LiveReserve", ()).await;
-            if reply.is_err() { break; }
+            if !client.list_names().await.unwrap().iter().any(|name| name.as_str() == BUS_NAME) { break; }
             tokio::task::yield_now().await;
         }
     }).await.expect("dropping the module owner must release its name");
+}
+
+
+#[tokio::test]
+async fn bound_live_transport_is_idempotent_and_excludes_competing_manual_readers() {
+    let proxy = connect().await.unwrap();
+    let reserved: serde_json::Value = proxy.call("LiveReserve", ()).await.unwrap();
+    let request = serde_json::json!({
+        "handle": reserved["handle"],
+        "port": {"bus_name":"ai.test.Transport", "object_path":"/test/Transport", "context_token":"known"}
+    });
+    let first: serde_json::Value = proxy.call("LiveBindTransport", &request).await.unwrap();
+    assert_eq!(first["state"], "reserved");
+    let repeated: serde_json::Value = proxy.call("LiveBindTransport", &request).await.unwrap();
+    assert_eq!(first, repeated);
+    let rejected: tinybus::Result<serde_json::Value> = proxy.call("LiveRead", serde_json::json!({
+        "handle":reserved["handle"], "acknowledged_batch":null
+    })).await;
+    assert!(rejected.is_err());
+    let changed = serde_json::json!({"handle":reserved["handle"],"port":{
+        "bus_name":"ai.test.Transport","object_path":"/test/Transport","context_token":"different"
+    }});
+    let rejected: tinybus::Result<serde_json::Value> = proxy.call("LiveBindTransport", changed).await;
+    assert!(rejected.is_err());
+    // This fixture deliberately has no callback endpoint. Teardown fails
+    // boundedly rather than pretending the host acknowledged socket cleanup.
+    let _: tinybus::Result<serde_json::Value> = proxy.call("LiveRelease", serde_json::json!({"handle":reserved["handle"]})).await;
 }
