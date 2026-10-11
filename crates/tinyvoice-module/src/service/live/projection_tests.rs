@@ -122,13 +122,13 @@ fn maps_audio_turns_errors_and_closes() {
         matches!(&out[0], LiveOutput::Json { frame: ServerFrame::Error { code, fatal: true, .. } } if code == "unauthorized")
     );
     // Tool calls surface through ToolStarted/ToolFinished instead.
-    assert!(
+    assert_eq!(
         map(LiveEvent::ToolCall(ToolCall {
             call_id: "c".into(),
             name: "n".into(),
             args: serde_json::json!({})
-        }))
-        .is_empty()
+        })),
+        vec![]
     );
 }
 

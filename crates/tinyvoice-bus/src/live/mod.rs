@@ -1,6 +1,8 @@
 //! Portable live websocket control vocabulary.
 
 pub mod session;
+/// Mechanical client socket and persistence callbacks for module-owned pumping.
+pub mod transport;
 
 use serde::{Deserialize, Serialize};
 

@@ -76,7 +76,7 @@ async fn provider_construction_uses_only_host_supplied_connection_material() -> 
 async fn empty_or_duplicate_declarations_never_create_a_dispatcher() -> anyhow::Result<()> {
     let (mut request, connection) = fixture().await?;
     let mut declaration = tinyvoice_bus::live::session::LiveToolDeclaration {
-        name: "".into(),
+        name: String::new(),
         description: "fixture".into(),
         parameters: json!({"type": "object"}),
         prefer_markdown: false,
@@ -102,7 +102,7 @@ async fn host_timeout_and_tool_call_limits_are_finite_and_positive() -> anyhow::
         (1, 1, 0),
         (1, 1, 10001),
         (1, 60001, 1),
-        (1800001, 1, 1),
+        (1_800_001, 1, 1),
     ] {
         let mut invalid = request.clone();
         invalid.tool_timeout_ms = tool_ms;
