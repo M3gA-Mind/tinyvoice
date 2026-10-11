@@ -13,10 +13,11 @@ Specification: ../specs/live-module-runtime.md.
    events until explicit release.
 4. Verify a real compiled native module against a local provider and a
    policy-aware callback; migrate websocket and lifecycle fixtures.
-5. In a separate owner follow-up, add the portable relay coordinator with host timing/completion ports where
-   extraction preserves the existing acknowledgment and deferred delivery
-   semantics. Keep product model, progress filtering and delivery choices out
-   of the module.
+5. The separate relay runtime owner follow-up implements the portable queue,
+   acknowledgment and completion coordinator through saved-context host ports.
+   Its contract and regression proof are documented in
+   [relay module runtime](../specs/relay-module-runtime.md). Product model,
+   progress filtering and delivery choices remain host-owned.
 6. Run owner workspace/module formatting, strict Clippy, tests, builds,
    documentation, native artifact verification and per-file coverage.
    Publish the owner prerequisite separately from released host adoption.
