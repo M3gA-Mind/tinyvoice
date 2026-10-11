@@ -7,6 +7,21 @@ use tinyvoice_bus::relay::runtime::{RelayHandle, RelayHostPort, RelayLimits};
 use tokio::sync::{Mutex, Notify};
 
 #[derive(Clone, Default)]
+enum EffectMode {
+    #[default]
+    Confirm,
+    LoseAcknowledgment,
+    Pending,
+}
+#[derive(Clone, Default)]
+enum FinishMode {
+    #[default]
+    Confirm,
+    WaitForRelease,
+    Pending,
+}
+
+#[derive(Clone, Default)]
 struct Brain {
     authorities: Arc<Mutex<HashMap<String, String>>>,
     invocations: Arc<Mutex<HashMap<String, String>>>,
@@ -22,13 +37,12 @@ struct Brain {
     admission_cancel: Arc<Notify>,
     admission_exited: Arc<Notify>,
     admission_stopped: Arc<std::sync::atomic::AtomicBool>,
-    lose_apply_ack: bool,
-    hold_apply: bool,
+    effect_mode: EffectMode,
     finish_entered: Arc<Notify>,
     finish_release: Arc<Notify>,
-    wait_finish_release: bool,
+    finish_mode: FinishMode,
     hold_start: bool,
-    hold_finish: bool,
+
     reject_authority: bool,
 }
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.RelayHost")]
@@ -126,10 +140,10 @@ impl Brain {
                 .extend(request.effects);
         }
         self.applied.notify_one();
-        if self.hold_apply {
+        if matches!(self.effect_mode, EffectMode::Pending) {
             std::future::pending::<()>().await;
         }
-        if self.lose_apply_ack {
+        if matches!(self.effect_mode, EffectMode::LoseAcknowledgment) {
             return Err(tinybus::Error::failed("fixture lost commit acknowledgment"));
         }
         Ok(ApplyRelayEffectsReply { applied: true })
@@ -143,10 +157,10 @@ impl Brain {
             return Ok(FinishRelayBrainReply { finished: false });
         }
         self.finish_entered.notify_one();
-        if self.wait_finish_release {
+        if matches!(self.finish_mode, FinishMode::WaitForRelease) {
             self.finish_release.notified().await;
         }
-        if self.hold_finish {
+        if matches!(self.finish_mode, FinishMode::Pending) {
             std::future::pending::<()>().await;
         }
         if self.hold_start
@@ -452,7 +466,7 @@ async fn native_completion_fallback_failure_and_lost_work_preserve_foreground_ef
 async fn release_expires_unresponsive_host_cleanup_without_claiming_success() -> tinybus::Result<()>
 {
     let brain = Brain {
-        hold_finish: true,
+        finish_mode: FinishMode::Pending,
         ..Brain::default()
     };
     let (turns, _module, _host) = fixture(brain.clone(), 1).await?;
@@ -642,7 +656,7 @@ async fn overall_deadline_finishes_queued_and_active_turns_without_inventing_nat
 async fn exhausted_commit_acknowledgments_do_not_emit_contradictory_new_effects()
 -> tinybus::Result<()> {
     let brain = Brain {
-        lose_apply_ack: true,
+        effect_mode: EffectMode::LoseAcknowledgment,
         ..Brain::default()
     };
     brain.events.lock().await.insert(
@@ -675,7 +689,7 @@ async fn exhausted_commit_acknowledgments_do_not_emit_contradictory_new_effects(
 async fn native_execution_slot_is_retained_until_finish_confirms_stopped_work()
 -> tinybus::Result<()> {
     let brain = Brain {
-        wait_finish_release: true,
+        finish_mode: FinishMode::WaitForRelease,
         ..Brain::default()
     };
     brain.events.lock().await.insert(
@@ -716,7 +730,7 @@ async fn native_execution_slot_is_retained_until_finish_confirms_stopped_work()
 async fn overall_deadline_cancels_stalled_effect_delivery_before_callback_retry_budget()
 -> tinybus::Result<()> {
     let brain = Brain {
-        hold_apply: true,
+        effect_mode: EffectMode::Pending,
         ..Brain::default()
     };
     brain.events.lock().await.insert(
@@ -750,7 +764,7 @@ async fn overall_deadline_cancels_stalled_effect_delivery_before_callback_retry_
 async fn unconfirmed_native_cleanup_closes_slots_instead_of_starting_queued_work()
 -> tinybus::Result<()> {
     let brain = Brain {
-        hold_finish: true,
+        finish_mode: FinishMode::Pending,
         ..Brain::default()
     };
     brain.events.lock().await.insert(
