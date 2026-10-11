@@ -107,7 +107,7 @@ impl Lease {
 pub(in crate::service) struct Sessions {
     closed: AtomicBool,
     leases: Mutex<HashMap<LiveHandle, Arc<Lease>>>,
-    connection: Mutex<Option<tinybus::Connection>>,
+    connection: Mutex<Option<tinybus::WeakConnection>>,
 }
 
 impl std::fmt::Debug for Sessions {
@@ -131,7 +131,7 @@ impl Default for Sessions {
 impl Sessions {
     pub(in crate::service) fn with_connection(connection: tinybus::Connection) -> Self {
         Self {
-            connection: Mutex::new(Some(connection)),
+            connection: Mutex::new(Some(connection.downgrade())),
             closed: AtomicBool::new(false),
             leases: Mutex::new(HashMap::new()),
         }
@@ -191,7 +191,8 @@ impl Sessions {
             .connection
             .lock()
             .map_err(|_| unavailable())?
-            .clone()
+            .as_ref()
+            .and_then(tinybus::WeakConnection::upgrade)
             .ok_or_else(|| tinybus::Error::failed("live callback connection is unavailable"))?;
         let mut phase = lease.phase.lock().map_err(|_| unavailable())?;
         if let Some(previous) = &phase.request {
@@ -261,7 +262,8 @@ impl Sessions {
             .connection
             .lock()
             .map_err(|_| unavailable())?
-            .clone()
+            .as_ref()
+            .and_then(tinybus::WeakConnection::upgrade)
             .ok_or_else(|| {
                 tinybus::Error::failed("live transport callback connection is unavailable")
             })?;

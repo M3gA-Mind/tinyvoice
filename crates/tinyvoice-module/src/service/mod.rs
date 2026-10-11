@@ -193,6 +193,13 @@ impl VoiceService {
     async fn live_reserve(&self) -> TinyBusResult<tinyvoice_bus::live::session::LiveStatus> {
         self.live.reserve()
     }
+    /// Attach the module-owned socket coordinator before provider startup.
+    async fn live_bind_transport(
+        &self,
+        request: tinyvoice_bus::live::transport::LiveBindTransportRequest,
+    ) -> TinyBusResult<tinyvoice_bus::live::session::LiveStatus> {
+        self.live.bind_transport(request)
+    }
     /// Begin provider startup idempotently on a known reservation.
     async fn live_start(
         &self,
@@ -742,6 +749,7 @@ tinybus_module::module_export_optional_static! {
         "PrepareRelayTurn",
         "PrepareLiveInput",
         "LiveReserve",
+        "LiveBindTransport",
         "LiveStart",
         "LiveSend",
         "LiveRead",

@@ -9,6 +9,8 @@ pub const OBJECT_PATH: &str = "/ai/tinyhumans/tinyvoice/Voice";
 /// One constant per member of [`BUS_NAME`].
 pub mod methods {
     /// Reserve a bounded live session before startup.
+    pub const LIVE_BIND_TRANSPORT: &str = "LiveBindTransport";
+    /// Reserve a live provider session.
     pub const LIVE_RESERVE: &str = "LiveReserve";
     /// Start native provider and tool-loop execution on a reserved handle.
     pub const LIVE_START: &str = "LiveStart";
@@ -116,6 +118,7 @@ pub const METHODS: &[&str] = &[
     methods::HOTKEY_STOP,
     methods::IS_HALLUCINATED,
     methods::LIST_INPUT_DEVICES,
+    methods::LIVE_BIND_TRANSPORT,
     methods::LIVE_READ,
     methods::LIVE_RELEASE,
     methods::LIVE_RESERVE,

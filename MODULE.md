@@ -4,7 +4,7 @@ This package contains the native `tinyvoice` module for TinyBus module ABI v1.
 Install only the archive matching the host operating system and architecture.
 
 The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
-`/ai/tinyhumans/tinyvoice/Voice`, and provides 41 methods under contract 1.7.
+`/ai/tinyhumans/tinyvoice/Voice`, and provides 42 methods under contract 1.7.
 
 ## Methods
 
@@ -22,6 +22,7 @@ The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
 | `VadClose` | `session` | — |
 | `PrepareRelayTurn` | `RelayTurnRequest { messages, readback_prefix }` | `PreparedRelayTurn`: prompt, ordered history pairs, optional readback payload, content-free, speak-back and answerable flags |
 | `PrepareLiveInput` | `PrepareLiveInputRequest { awaiting_start, frame }` | parsed control or transport action; host owns policy validation |
+| `LiveBindTransport` | reserved handle and mechanical host transport port | idempotent `LiveStatus`; module owns the client/provider coordinator |
 | `LiveReserve` | none | opaque `LiveStatus` reserved before connection startup |
 | `LiveStart` | `LiveStartRequest` | idempotent starting/running status for identical inputs |
 | `LiveSend` | handle and text, PCM16 audio, interrupt or stop command | status after bounded input admission |

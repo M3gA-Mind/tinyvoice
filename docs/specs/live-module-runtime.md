@@ -85,3 +85,5 @@ not create or revive unknown contexts/invocations. TinyBus stops waiting
 without cancelling remote execution, so the host must cancel its own invocation
 leases on endpoint/context teardown as well. Remote notification is bounded
 best effort; native provider termination does not depend on receiving it.
+
+The runtime requires the non-owning connection capability proposed in TinyBus [PR #50](https://github.com/tinyhumansai/tinybus/pull/50). Served module objects store `WeakConnection`; active work upgrades it temporarily. OpenHuman adoption must wait for the prerequisite and a released, admitted TinyVoice artifact.

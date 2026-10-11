@@ -76,7 +76,7 @@ names, error detail, handles, audio, paths and request arguments.
 
 Local fixtures exercise lifecycle, bounds, faults and in-memory bus dispatch
 without hardware or external services. The actual compiled artifact verifier
-checks all 41 declared members and permission denial without opening a device.
+checks all 42 declared members and permission denial without opening a device.
 The native device bridge follows the repository's existing physical-device
 coverage exception; manager and processing code remain subject to the 90%
 per-file threshold.
