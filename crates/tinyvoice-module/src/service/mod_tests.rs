@@ -1059,3 +1059,16 @@ async fn oversized_relay_request_returns_an_error_without_breaking_the_bus() {
         .unwrap();
     assert_eq!(reply["prompt"], "hello");
 }
+
+#[tokio::test]
+async fn live_first_frame_parsing_preserves_default_rate_and_host_metadata() {
+    let proxy = connect().await.unwrap();
+    let reply: serde_json::Value = proxy.call("PrepareLiveInput", serde_json::json!({
+        "awaiting_start": true,
+        "frame": {"kind": "text", "text": "{\"type\":\"start\",\"thread_id\":\"thread\",\"client_id\":\"client\"}"}
+    })).await.unwrap();
+    assert_eq!(reply["type"], "start");
+    assert_eq!(reply["input_sample_rate"], 16000);
+    assert_eq!(reply["thread_id"], "thread");
+    assert_eq!(reply["client_id"], "client");
+}
