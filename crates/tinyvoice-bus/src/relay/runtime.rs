@@ -238,3 +238,7 @@ redacted_debug!(
     RelayEffect,
     ApplyRelayEffectsRequest,
 );
+
+#[cfg(test)]
+#[path = "runtime_tests.rs"]
+mod tests;

@@ -127,3 +127,5 @@ TinyBus modules are trusted in-process code: a loaded module shares the address
 space, the privileges and the crash domain, and TinyBus never unloads one.
 Install release artifacts only from a trusted source, and restart the host after
 replacing a loaded module.
+
+Relay coordination uses context-bound host callbacks; see the [relay runtime contract](docs/specs/relay-module-runtime.md).

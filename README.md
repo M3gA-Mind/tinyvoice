@@ -99,6 +99,14 @@ on a realtime thread where blocking causes dropouts, so callbacks forward raw
 interleaved samples into a bounded queue. Hosts poll batches and call
 `PrepareFrames` from a worker.
 
+### Relay turn coordination
+
+The compiled module also coordinates admitted local-brain turns through
+explicit RelayHost callbacks: scheduling, selected progress, an acknowledgment
+clock that starts before queueing, and deferred completion. Hosts supply the
+native brain and retain correlation, phrase and delivery policy. See the
+[relay runtime contract](docs/specs/relay-module-runtime.md).
+
 ### Live sessions
 
 The compiled module owns the live provider loop through TinyAgentsLive and a
