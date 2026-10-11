@@ -140,10 +140,7 @@ impl Sessions {
             return Err(tinybus::Error::failed("live session capacity is exhausted"));
         }
         loop {
-            let mut random = [0_u8; 16];
-            getrandom::fill(&mut random)
-                .map_err(|_| tinybus::Error::failed("live handle generation failed"))?;
-            let id: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
+            let id = random_id()?;
             let handle = LiveHandle { id };
             if !leases.contains_key(&handle) {
                 leases.insert(handle.clone(), Arc::new(Lease::new()));
@@ -370,7 +367,7 @@ impl Sessions {
                 Err(_) => {
                     failure = Some(tinybus::Error::failed(
                         "live cleanup task terminated unexpectedly",
-                    ))
+                    ));
                 }
             }
         }
@@ -433,10 +430,10 @@ impl Drop for Sessions {
         if let Ok(leases) = self.leases.get_mut() {
             for lease in leases.values() {
                 lease.cancel();
-                if let Ok(mut phase) = lease.phase.lock() {
-                    if let Some(task) = phase.task.take() {
-                        task.abort();
-                    }
+                if let Ok(mut phase) = lease.phase.lock()
+                    && let Some(task) = phase.task.take()
+                {
+                    task.abort();
                 }
             }
         }
@@ -450,3 +447,11 @@ fn unavailable() -> tinybus::Error {
 #[cfg(test)]
 #[path = "table_tests.rs"]
 mod tests;
+
+/// Generate unpredictable correlation identities without deriving host secrets.
+pub(super) fn random_id() -> tinybus::Result<String> {
+    let mut random = [0_u8; 16];
+    getrandom::fill(&mut random)
+        .map_err(|_| tinybus::Error::failed("live identity generation failed"))?;
+    Ok(format!("{:032x}", u128::from_be_bytes(random)))
+}

@@ -7,8 +7,10 @@ use super::{ServerFrame, TranscriptRole};
 
 /// Fixed interface served by a host's policy-aware tool callback.
 pub const TOOL_CALLBACK_INTERFACE: &str = "ai.tinyhumans.tinyvoice.LiveTools";
-/// The only method invoked on a live tool callback endpoint.
+/// Execute an admitted provider tool call through current host authority.
 pub const TOOL_CALLBACK_METHOD: &str = "ExecuteLiveTool";
+/// Revoke one known host invocation when its native dispatch future is dropped.
+pub const CANCEL_CALLBACK_METHOD: &str = "CancelLiveTool";
 /// Idempotently revoke a known context and cancel its host-owned work.
 pub const FINISH_CALLBACK_METHOD: &str = "FinishLiveContext";
 
@@ -127,6 +129,8 @@ impl std::fmt::Debug for LiveToolPort {
 pub struct ExecuteLiveToolRequest {
     /// Saved host authority, checked independently of the declaration.
     pub context_token: String,
+    /// Fresh invocation identity used only for precise host-work cancellation.
+    pub invocation_id: String,
     /// Admitted provider call identity.
     pub call_id: String,
     /// Declared tool name.
@@ -141,6 +145,7 @@ impl std::fmt::Debug for ExecuteLiveToolRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ExecuteLiveToolRequest")
             .field("context_token", &"[redacted]")
+            .field("invocation_id", &self.invocation_id)
             .field("call_id", &self.call_id)
             .field("name", &self.name)
             .field("arguments", &"[redacted]")
@@ -341,4 +346,37 @@ impl std::fmt::Debug for FinishLiveContextRequest {
 pub struct FinishLiveContextReply {
     /// Whether the known context is closed and its owned work has stopped.
     pub finished: bool,
+}
+
+/// Cancel only this known invocation; late/repeated calls must not create work.
+///
+/// The host matches both the context and the fresh invocation identity. The
+/// provider call identity remains separately available for provenance. Unknown
+/// contexts or invocations return false; already completed known invocations
+/// may return true without repeating any side effect.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CancelLiveToolRequest {
+    /// Saved host authority; never recovered from provider arguments.
+    pub context_token: String,
+    /// Module-generated invocation identity from the execute request.
+    pub invocation_id: String,
+    /// Original admitted provider call identity.
+    pub call_id: String,
+}
+
+impl std::fmt::Debug for CancelLiveToolRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CancelLiveToolRequest")
+            .field("context_token", &"[redacted]")
+            .field("invocation_id", &self.invocation_id)
+            .field("call_id", &self.call_id)
+            .finish()
+    }
+}
+
+/// Acknowledgement that a known host invocation is no longer running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CancelLiveToolReply {
+    /// False for an unknown invocation; never invent a successful cancellation.
+    pub cancelled: bool,
 }

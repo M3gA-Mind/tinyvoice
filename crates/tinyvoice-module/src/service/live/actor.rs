@@ -149,7 +149,7 @@ fn oversized(event: &LiveAgentEvent) -> bool {
         LiveAgentEvent::Live(LiveEvent::Closed(CloseReason::Remote { reason, .. })) => {
             reason.len() > MAX_TEXT_BYTES
         }
-        _ => false,
+        LiveAgentEvent::Live(_) => false,
     }
 }
 

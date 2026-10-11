@@ -7,8 +7,9 @@ use serde_json::Value;
 use tinyagents_harness::{context::RunContext, ids::CallId, tool::ToolDispatch};
 use tinytools::{Tool, ToolCallOptions, ToolResult};
 use tinyvoice_bus::live::session::{
-    ExecuteLiveToolReply, ExecuteLiveToolRequest, LiveToolDeclaration, LiveToolPort,
-    TOOL_CALLBACK_INTERFACE, TOOL_CALLBACK_METHOD,
+    CANCEL_CALLBACK_METHOD, CancelLiveToolReply, CancelLiveToolRequest, ExecuteLiveToolReply,
+    ExecuteLiveToolRequest, LiveToolDeclaration, LiveToolPort, TOOL_CALLBACK_INTERFACE,
+    TOOL_CALLBACK_METHOD,
 };
 
 /// Schema-only tool descriptor; typed dispatch is the only executable path.
@@ -79,6 +80,7 @@ impl ToolDispatch<(), ()> for CallbackTool {
         _parent: &RunContext<()>,
     ) -> anyhow::Result<ToolResult> {
         let request = ExecuteLiveToolRequest {
+            invocation_id: super::table::random_id()?,
             context_token: self.port.context_token.clone(),
             call_id: call_id.to_string(),
             name: self.declaration.0.name.clone(),
@@ -88,7 +90,16 @@ impl ToolDispatch<(), ()> for CallbackTool {
         if !super::super::relay::fits(&request, 1024 * 1024) {
             anyhow::bail!("live tool callback request exceeds its serialized limit");
         }
+        let mut cancellation = InvocationGuard {
+            proxy: self.proxy.clone(),
+            request: Some(CancelLiveToolRequest {
+                context_token: request.context_token.clone(),
+                invocation_id: request.invocation_id.clone(),
+                call_id: request.call_id.clone(),
+            }),
+        };
         let reply: ExecuteLiveToolReply = self.proxy.call(TOOL_CALLBACK_METHOD, (request,)).await?;
+        cancellation.request = None;
         if !super::super::relay::fits(&reply, 1024 * 1024) {
             anyhow::bail!("live tool callback result exceeds its serialized limit");
         }
@@ -101,3 +112,28 @@ impl ToolDispatch<(), ()> for CallbackTool {
 #[cfg(test)]
 #[path = "callback_tests.rs"]
 mod tests;
+
+/// A dropped native callback cannot detach its independently owned host work.
+///
+/// Notification is bounded and best effort; hosts must additionally cancel
+/// their invocation leases on endpoint/context teardown. Provider cancellation
+/// that permits a running native tool to finish does not drop this guard early.
+struct InvocationGuard {
+    proxy: tinybus::Proxy,
+    request: Option<CancelLiveToolRequest>,
+}
+
+impl Drop for InvocationGuard {
+    fn drop(&mut self) {
+        if let Some(request) = self.request.take() {
+            let proxy = self.proxy.clone();
+            tokio::spawn(async move {
+                let _ = tokio::time::timeout(
+                    std::time::Duration::from_secs(1),
+                    proxy.call::<CancelLiveToolReply>(CANCEL_CALLBACK_METHOD, (request,)),
+                )
+                .await;
+            });
+        }
+    }
+}

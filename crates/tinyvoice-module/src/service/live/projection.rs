@@ -51,7 +51,7 @@ pub(super) fn map_event(
             LiveEvent::Interrupted => vec![json(ServerFrame::Interrupted)],
             LiveEvent::TurnComplete { .. } => vec![json(ServerFrame::TurnComplete)],
             LiveEvent::Error { error, fatal } => {
-                let error = project_error(error);
+                let error = project_error(&error);
                 vec![json(ServerFrame::Error {
                     code: error.0.to_string(),
                     message: error.1,
@@ -67,7 +67,7 @@ pub(super) fn map_event(
                         None => "remote".to_string(),
                     },
                     CloseReason::Error(error) => {
-                        let error = project_error(error);
+                        let error = project_error(&error);
                         out.push(json(ServerFrame::Error {
                             code: error.0.to_string(),
                             message: error.1,
@@ -103,8 +103,8 @@ fn json(frame: ServerFrame) -> LiveOutput {
     LiveOutput::Json { frame }
 }
 
-fn project_error(error: Error) -> (&'static str, String) {
-    let code = match &error {
+fn project_error(error: &Error) -> (&'static str, String) {
+    let code = match error {
         Error::Unauthorized => "unauthorized",
         Error::InsufficientCredits => "insufficient_credits",
         Error::RateLimited => "rate_limited",

@@ -8,7 +8,7 @@ Specification: ../specs/live-module-runtime.md.
 2. Consume TinyAgentsLive from its canonical recorded source as a module
    implementation dependency. Add a callback tool adapter with explicit host
    context and current-policy enforcement at the host endpoint.
-3. Add bounded random session handles and duplex open/send/read/close/shutdown
+3. Add bounded random session handles and duplex reserve/start/send/read/release/shutdown
    operations. Replay event batches until acknowledged and retain terminal
    events until explicit release.
 4. Verify a real compiled native module against a local provider and a
