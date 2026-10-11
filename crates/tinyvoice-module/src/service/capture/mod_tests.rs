@@ -200,6 +200,24 @@ async fn finish_holds_prepared_wav_for_bounded_reads_and_explicit_release() -> C
     Ok(())
 }
 
+#[tokio::test]
+async fn recording_summary_preserves_short_capture_before_gate_closes() -> CaptureResult<()> {
+    let (capture, _) = fixture(false);
+    let handle = capture.start(MicrophonePermission::Granted)?;
+    let output = capture
+        .finish(RecordingFinishRequest {
+            handle: handle.clone(),
+            gate_threshold: 0.5,
+        })
+        .await?;
+    let summary = capture.summary(&RecordingSummaryRequest { handle })?;
+
+    assert_eq!(summary.sample_count, 320);
+    assert!((summary.peak_rms - 0.25).abs() < f32::EPSILON);
+    assert_eq!(output.length, 44 + 320 * 2);
+    Ok(())
+}
+
 #[test]
 fn silence_gate_preserves_short_speech_before_a_long_silent_tail() -> CaptureResult<()> {
     let mut samples = vec![0.1; 1_000];
@@ -1199,4 +1217,19 @@ async fn lost_cleanup_notifications_fail_closed() {
         wait_for_idle(&busy, idle).await,
         Err(CaptureError::Device(_))
     ));
+}
+
+#[test]
+fn recording_summary_uses_gated_duration_and_ungated_energy() -> CaptureResult<()> {
+    let raw = RawRecording {
+        samples: vec![0.25; 16_000],
+        source_rate: 16_000,
+        channels: 1,
+    };
+    let wav = prepare(&raw, 0.5)?;
+    let summary = summarize(&raw, &wav)?;
+    assert!(summary.sample_count < raw.samples.len());
+    assert_eq!(summary.sample_count * 2 + 44, wav.len());
+    assert!((summary.peak_rms - 0.25).abs() < f32::EPSILON);
+    Ok(())
 }

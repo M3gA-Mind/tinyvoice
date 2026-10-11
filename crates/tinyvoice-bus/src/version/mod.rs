@@ -1,7 +1,7 @@
 //! The `TinyVoice` `TinyBus` contract version and its binding rule.
 
 /// The wire contract version this crate defines.
-pub const CONTRACT_VERSION: (u32, u32) = (1, 4);
+pub const CONTRACT_VERSION: (u32, u32) = (1, 5);
 
 /// Returns whether a host using [`CONTRACT_VERSION`] can bind to `module`.
 ///

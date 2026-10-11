@@ -257,6 +257,15 @@ impl VoiceService {
     {
         Ok(self.capture.finish(request).await)
     }
+    /// Return module-computed metrics without returning the captured samples.
+    async fn recording_summary(
+        &self,
+        request: tinyvoice_bus::capture::RecordingSummaryRequest,
+    ) -> TinyBusResult<
+        tinyvoice_bus::capture::CaptureResult<tinyvoice_bus::capture::RecordingSummary>,
+    > {
+        Ok(self.capture.summary(&request))
+    }
     /// Stop and discard a native recording.
     async fn recording_cancel(
         &self,
@@ -681,6 +690,7 @@ tinybus_module::module_export_optional_static! {
         "RecordingStart",
         "ReserveCapture",
         "RecordingFinish",
+        "RecordingSummary",
         "RecordingCancel",
         "ReadAudioOutput",
         "ReleaseAudioOutput",
