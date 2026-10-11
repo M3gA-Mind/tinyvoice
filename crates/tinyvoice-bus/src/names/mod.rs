@@ -8,6 +8,16 @@ pub const OBJECT_PATH: &str = "/ai/tinyhumans/tinyvoice/Voice";
 
 /// One constant per member of [`BUS_NAME`].
 pub mod methods {
+    /// Fix explicit host concurrency and reservation bounds.
+    pub const RELAY_CONFIGURE: &str = "RelayConfigure";
+    /// Reserve a relay turn before local-brain startup.
+    pub const RELAY_RESERVE: &str = "RelayReserve";
+    /// Own foreground timing and deferred progress on a known reservation.
+    pub const RELAY_START: &str = "RelayStart";
+    /// Stop one owned relay turn and notify current host cleanup.
+    pub const RELAY_RELEASE: &str = "RelayRelease";
+    /// Close relay admission and stop all owned coordinators.
+    pub const RELAY_SHUTDOWN: &str = "RelayShutdown";
     /// Bind the module-owned socket coordinator before provider startup.
     pub const LIVE_BIND_TRANSPORT: &str = "LiveBindTransport";
     /// Reserve a live provider session.
@@ -134,6 +144,11 @@ pub const METHODS: &[&str] = &[
     methods::RECORDING_FINISH,
     methods::RECORDING_START,
     methods::RECORDING_SUMMARY,
+    methods::RELAY_CONFIGURE,
+    methods::RELAY_RELEASE,
+    methods::RELAY_RESERVE,
+    methods::RELAY_SHUTDOWN,
+    methods::RELAY_START,
     methods::RELEASE_AUDIO_OUTPUT,
     methods::RESERVE_CAPTURE,
     methods::ROUTE,
