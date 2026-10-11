@@ -56,11 +56,9 @@ pub(super) async fn run(
             drop(session);
         }
         Some(Err(error)) => {
-            let outputs = super::projection::map_event(
+            let outputs = bounded_projection(
                 LiveAgentEvent::Live(LiveEvent::Closed(CloseReason::Error(error))),
-                &request.session_id,
-                &request.provider,
-                &request.thread_id,
+                &request,
             );
             let _ = lease.outputs.send(outputs).await;
         }
@@ -94,31 +92,12 @@ async fn forward(lease: &Lease, session: &mut LiveAgentSession, request: &LiveSt
                 }
             }
             event => {
-                if oversized(&event) {
-                    let outputs = vec![
-                        LiveOutput::Json {
-                            frame: ServerFrame::Error {
-                                code: "invalid_response".into(),
-                                message: "live provider text exceeds the bounded output limit"
-                                    .into(),
-                                fatal: true,
-                            },
-                        },
-                        LiveOutput::Json {
-                            frame: ServerFrame::Closed {
-                                reason: "error".into(),
-                            },
-                        },
-                    ];
+                let rejected = oversized(&event);
+                let outputs = bounded_projection(event, request);
+                if rejected {
                     let _ = lease.outputs.send(outputs).await;
                     return;
                 }
-                let outputs = super::projection::map_event(
-                    event,
-                    &request.session_id,
-                    &request.provider,
-                    &request.thread_id,
-                );
                 if !outputs.is_empty() && lease.outputs.send(outputs).await.is_err() {
                     return;
                 }
@@ -128,6 +107,32 @@ async fn forward(lease: &Lease, session: &mut LiveAgentSession, request: &LiveSt
             return;
         }
     }
+}
+
+/// Bound provider errors on both startup and streaming paths before projection.
+fn bounded_projection(event: LiveAgentEvent, request: &LiveStartRequest) -> Vec<LiveOutput> {
+    if oversized(&event) {
+        return vec![
+            LiveOutput::Json {
+                frame: ServerFrame::Error {
+                    code: "invalid_response".into(),
+                    message: "live provider text exceeds the bounded output limit".into(),
+                    fatal: true,
+                },
+            },
+            LiveOutput::Json {
+                frame: ServerFrame::Closed {
+                    reason: "error".into(),
+                },
+            },
+        ];
+    }
+    super::projection::map_event(
+        event,
+        &request.session_id,
+        &request.provider,
+        &request.thread_id,
+    )
 }
 
 fn oversized(event: &LiveAgentEvent) -> bool {
