@@ -105,3 +105,17 @@ fn relay_values_round_trip_arbitrary_provider_content_and_empty_readback() {
         result
     );
 }
+
+#[test]
+fn module_documentation_tracks_the_declared_contract() {
+    let documentation = include_str!("../../../MODULE.md");
+    let header = format!(
+        "provides {} methods under contract {}.{}.",
+        super::METHODS.len(), CONTRACT_VERSION.0, CONTRACT_VERSION.1
+    );
+    assert!(documentation.contains(&header), "module overview must match the bus contract");
+    for method in super::METHODS {
+        assert!(documentation.contains(&format!("| `{method}` |")),
+            "missing documented method: {method}");
+    }
+}
