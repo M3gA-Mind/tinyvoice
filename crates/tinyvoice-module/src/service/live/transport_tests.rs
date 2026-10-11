@@ -18,6 +18,7 @@ struct Socket {
     first_reply_lost: bool,
     unresponsive_close: bool,
     invalid_sequence: bool,
+    reject_delivery: bool,
 }
 
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.LiveTransport")]
@@ -37,6 +38,9 @@ impl Socket {
         request: DeliverLiveEffectsRequest,
     ) -> tinybus::Result<DeliverLiveEffectsReply> {
         let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
+        if self.reject_delivery {
+            return Ok(DeliverLiveEffectsReply { delivered: false });
+        }
         if self.committed.lock().await.insert(request.delivery_id) {
             self.effects.lock().await.extend(request.outputs);
         }
@@ -197,6 +201,142 @@ async fn unresponsive_socket_cleanup_is_bounded_and_never_acknowledged_as_succes
             .map_err(|_| tinybus::Error::failed("fixture lock"))?
             .transport_cleanup_confirmed
     );
+    sessions.release(handle).await?;
+    Ok(())
+}
+
+fn port() -> LiveTransportPort {
+    LiveTransportPort {
+        bus_name: "ai.test.Transport".into(),
+        object_path: "/test/Transport".into(),
+        context_token: "known".into(),
+    }
+}
+
+#[tokio::test]
+async fn portable_transport_controls_preserve_native_input_and_ignore_late_noncontrols()
+-> tinybus::Result<()> {
+    use tinyagents_live::tinyliveagents::{ClientCommand, LiveSession};
+    let socket = Socket::default();
+    let (sessions, module, _host, handle, lease) = fixture(socket).await?;
+    let proxy = module.proxy("ai.test.Transport", "/test/Transport", INTERFACE)?;
+    let (commands, mut receive) = tokio::sync::mpsc::channel(8);
+    let (_events, events) = tokio::sync::mpsc::channel(8);
+    let native = LiveSession::from_channels(commands, events);
+    lease
+        .phase
+        .lock()
+        .map_err(|_| tinybus::Error::failed("fixture lock"))?
+        .sender = Some(native.sender());
+    for input in [
+        PreparedLiveInput::Control(ClientFrame::Interrupt),
+        PreparedLiveInput::Control(ClientFrame::Stop),
+        PreparedLiveInput::Transport(LiveTransportAction::Audio { pcm16: vec![1, 2] }),
+    ] {
+        assert!(apply_input(&lease, &handle, &port(), &proxy, 1, input).await?);
+    }
+    assert!(matches!(
+        receive.recv().await,
+        Some(ClientCommand::Interrupt)
+    ));
+    assert!(matches!(receive.recv().await, Some(ClientCommand::Close)));
+    assert!(
+        matches!(receive.recv().await,Some(ClientCommand::Audio(bytes)) if bytes.as_ref() == [1,2])
+    );
+    assert!(
+        apply_input(
+            &lease,
+            &handle,
+            &port(),
+            &proxy,
+            1,
+            PreparedLiveInput::Transport(LiveTransportAction::Ignore)
+        )
+        .await?
+    );
+    assert!(
+        apply_input(
+            &lease,
+            &handle,
+            &port(),
+            &proxy,
+            1,
+            PreparedLiveInput::Control(ClientFrame::Start {
+                provider: None,
+                thread_id: None,
+                client_id: None,
+                input_sample_rate: 16000
+            })
+        )
+        .await?
+    );
+    for input in [
+        PreparedLiveInput::Control(ClientFrame::Text {
+            text: "x".repeat(MAX_TEXT_BYTES + 1),
+        }),
+        PreparedLiveInput::Transport(LiveTransportAction::Audio {
+            pcm16: vec![0; MAX_AUDIO_BYTES + 1],
+        }),
+    ] {
+        assert!(
+            apply_input(&lease, &handle, &port(), &proxy, 1, input)
+                .await
+                .is_err()
+        );
+    }
+    sessions.release(handle).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn rejected_delivery_retries_boundedly_without_persisting_or_dispatching_input()
+-> tinybus::Result<()> {
+    let socket = Socket {
+        reject_delivery: true,
+        ..Socket::default()
+    };
+    let (sessions, module, _host, handle, lease) = fixture(socket.clone()).await?;
+    let proxy = module.proxy("ai.test.Transport", "/test/Transport", INTERFACE)?;
+    assert!(
+        apply_input(
+            &lease,
+            &handle,
+            &port(),
+            &proxy,
+            1,
+            PreparedLiveInput::Control(ClientFrame::Text {
+                text: "uncommitted".into()
+            })
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(socket.attempts.load(Ordering::SeqCst), 2);
+    assert!(socket.effects.lock().await.is_empty());
+    let outputs = vec![LiveOutput::Persist {
+        role: TranscriptRole::User,
+        text: "\0".repeat(2 * MAX_BATCH_BYTES),
+    }];
+    assert!(
+        deliver(&proxy, &port(), &handle, "oversized".into(), outputs)
+            .await
+            .is_err()
+    );
+    assert_eq!(socket.attempts.load(Ordering::SeqCst), 2);
+    sessions.release(handle).await?;
+    Ok(())
+}
+
+#[tokio::test(start_paused = true)]
+async fn forgotten_bound_reservation_expires_and_closes_its_mechanical_socket()
+-> tinybus::Result<()> {
+    let socket = Socket::default();
+    let (sessions, _module, _host, handle, lease) = fixture(socket.clone()).await?;
+    tokio::time::advance(Duration::from_secs(60)).await;
+    tokio::time::timeout(Duration::from_secs(1), socket.closed.notified())
+        .await
+        .map_err(|_| tinybus::Error::failed("fixture deadline"))?;
+    assert!(lease.cancelled.load(Ordering::SeqCst));
     sessions.release(handle).await?;
     Ok(())
 }
