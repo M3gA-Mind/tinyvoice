@@ -15,6 +15,7 @@ const MAX_TEXT: usize = 256 * 1024;
 struct Delivery {
     sequence: u64,
     unacknowledged: bool,
+    expiry: Option<tokio::time::Instant>,
 }
 
 type Incoming = Pin<Box<dyn Future<Output = tinybus::Result<ReadRelayBrainReply>> + Send>>;
@@ -91,6 +92,7 @@ async fn coordinate(
     let began = tokio::time::Instant::now();
     let deadline = began + Duration::from_millis(request.acknowledgment_deadline_ms);
     let expiry = began + Duration::from_millis(request.turn_timeout_ms);
+    delivery.expiry = Some(expiry);
     let mut foreground_closed = false;
     let mut streamed = false;
     let acquire = slots.acquire_owned();
@@ -298,8 +300,15 @@ async fn apply(
         ));
     }
     delivery.unacknowledged = true;
-    for _ in 0..2 {
-        if matches!(tokio::time::timeout(CALLBACK_TIMEOUT,proxy.call::<ApplyRelayEffectsReply>(APPLY_METHOD,(request.clone(),))).await,Ok(Ok(reply)) if reply.applied)
+    for attempt in 0..2 {
+        if attempt > 0
+            && delivery
+                .expiry
+                .is_some_and(|expiry| tokio::time::Instant::now() >= expiry)
+        {
+            break;
+        }
+        if matches!(tokio::time::timeout_at(delivery.expiry.map_or(tokio::time::Instant::now() + CALLBACK_TIMEOUT, |expiry| expiry.min(tokio::time::Instant::now() + CALLBACK_TIMEOUT)),proxy.call::<ApplyRelayEffectsReply>(APPLY_METHOD,(request.clone(),))).await,Ok(Ok(reply)) if reply.applied)
         {
             delivery.unacknowledged = false;
             return Ok(());
