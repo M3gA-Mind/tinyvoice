@@ -118,7 +118,7 @@ impl Default for Sessions {
 }
 
 impl Sessions {
-    pub(super) fn with_connection(connection: tinybus::Connection) -> Self {
+    pub(in crate::service) fn with_connection(connection: tinybus::Connection) -> Self {
         Self {
             connection: Mutex::new(Some(connection)),
             closed: AtomicBool::new(false),
@@ -126,7 +126,7 @@ impl Sessions {
         }
     }
 
-    pub(super) fn reserve(&self) -> tinybus::Result<LiveStatus> {
+    pub(in crate::service) fn reserve(&self) -> tinybus::Result<LiveStatus> {
         let mut leases = self.leases.lock().map_err(|_| unavailable())?;
         if self.closed.load(Ordering::SeqCst) {
             return Err(tinybus::Error::failed("live module admission is closed"));
@@ -164,7 +164,10 @@ impl Sessions {
             .ok_or_else(|| tinybus::Error::failed("unknown live session handle"))
     }
 
-    pub(super) fn start(&self, request: LiveStartRequest) -> tinybus::Result<LiveStatus> {
+    pub(in crate::service) fn start(
+        &self,
+        request: LiveStartRequest,
+    ) -> tinybus::Result<LiveStatus> {
         if !super::super::relay::fits(&request, MAX_BATCH_BYTES) {
             return Err(tinybus::Error::failed(
                 "live startup exceeds the serialized size limit",
@@ -189,7 +192,11 @@ impl Sessions {
                 "live session was already started with different inputs",
             ));
         }
-        if phase.state != LiveState::Reserved || lease.created.elapsed() >= RESERVATION_TTL {
+        if self.closed.load(Ordering::SeqCst)
+            || lease.cancelled.load(Ordering::SeqCst)
+            || phase.state != LiveState::Reserved
+            || lease.created.elapsed() >= RESERVATION_TTL
+        {
             return Err(tinybus::Error::failed(
                 "live reservation is closed or expired",
             ));
@@ -209,7 +216,10 @@ impl Sessions {
         })
     }
 
-    pub(super) async fn send(&self, request: LiveSendRequest) -> tinybus::Result<LiveStatus> {
+    pub(in crate::service) async fn send(
+        &self,
+        request: LiveSendRequest,
+    ) -> tinybus::Result<LiveStatus> {
         use base64::Engine as _;
         let lease = self.lease(&request.handle)?;
         let sender = {
@@ -250,7 +260,10 @@ impl Sessions {
         lease.status(request.handle)
     }
 
-    pub(super) async fn read(&self, request: LiveReadRequest) -> tinybus::Result<LiveBatch> {
+    pub(in crate::service) async fn read(
+        &self,
+        request: LiveReadRequest,
+    ) -> tinybus::Result<LiveBatch> {
         let lease = self.lease(&request.handle)?;
         let mut reader = lease.reader.lock().await;
         if let Some(ack) = request.acknowledged_batch {
@@ -309,7 +322,10 @@ impl Sessions {
         Ok(batch)
     }
 
-    pub(super) async fn release(&self, handle: LiveHandle) -> tinybus::Result<LiveStatus> {
+    pub(in crate::service) async fn release(
+        &self,
+        handle: LiveHandle,
+    ) -> tinybus::Result<LiveStatus> {
         let lease = self
             .leases
             .lock()
@@ -324,7 +340,7 @@ impl Sessions {
         })
     }
 
-    pub(super) async fn shutdown(&self) -> tinybus::Result<()> {
+    pub(in crate::service) async fn shutdown(&self) -> tinybus::Result<()> {
         self.closed.store(true, Ordering::SeqCst);
         let leases: Vec<_> = self
             .leases
