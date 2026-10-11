@@ -211,3 +211,7 @@ async fn deliver(
         "live transport did not acknowledge delivery",
     ))
 }
+
+#[cfg(test)]
+#[path = "transport_tests.rs"]
+mod tests;
