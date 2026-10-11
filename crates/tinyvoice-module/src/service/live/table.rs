@@ -355,10 +355,23 @@ impl Sessions {
         for lease in &leases {
             lease.cancel();
         }
-        let mut failure = None;
+        // Start every bounded cleanup together: the shutdown deadline must not
+        // multiply by the number of admitted sessions. JoinSet also aborts its
+        // cleanup futures if the caller cancels shutdown.
+        let mut cleanups = tokio::task::JoinSet::new();
         for lease in leases {
-            if let Err(error) = stop_lease(&lease).await {
-                failure = Some(error);
+            cleanups.spawn(async move { stop_lease(&lease).await });
+        }
+        let mut failure = None;
+        while let Some(result) = cleanups.join_next().await {
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => failure = Some(error),
+                Err(_) => {
+                    failure = Some(tinybus::Error::failed(
+                        "live cleanup task terminated unexpectedly",
+                    ))
+                }
             }
         }
         failure.map_or(Ok(()), Err)
@@ -373,11 +386,14 @@ async fn stop_lease(lease: &Lease) -> tinybus::Result<()> {
         phase.state = LiveState::Closed;
         phase.task.take()
     };
-    if let Some(mut task) = task {
-        match tokio::time::timeout(std::time::Duration::from_secs(2), &mut task).await {
+    if let Some(task) = task {
+        // Cancellation of Release/Shutdown must not drop a bare JoinHandle,
+        // which would detach the provider worker instead of terminating it.
+        let mut owned = OwnedTask(task);
+        match tokio::time::timeout(std::time::Duration::from_secs(2), &mut owned.0).await {
             Err(_) => {
-                task.abort();
-                let _ = task.await;
+                owned.0.abort();
+                let _ = (&mut owned.0).await;
                 return Err(tinybus::Error::failed(
                     "live worker cleanup exceeded its deadline",
                 ));
@@ -401,6 +417,15 @@ async fn stop_lease(lease: &Lease) -> tinybus::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Abort even when the caller drops a cleanup future before its deadline.
+struct OwnedTask(JoinHandle<()>);
+
+impl Drop for OwnedTask {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
 impl Drop for Sessions {
