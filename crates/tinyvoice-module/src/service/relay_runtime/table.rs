@@ -54,12 +54,6 @@ impl Lease {
             notified.await;
         }
     }
-    fn status(&self, handle: RelayHandle) -> tinybus::Result<RelayStatus> {
-        Ok(RelayStatus {
-            handle,
-            state: self.phase.lock().map_err(|_| unavailable())?.state,
-        })
-    }
 }
 struct Quota {
     limits: RelayLimits,

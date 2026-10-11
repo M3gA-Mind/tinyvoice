@@ -87,12 +87,23 @@ async fn coordinate(
             ()=tokio::time::sleep_until(expiry)=>return lose(request,proxy,invocation,delivery,streamed,foreground_closed).await,
         }
     };
-    let started = tokio::time::timeout(
+
+    let admission = tokio::time::timeout(
         CALLBACK_TIMEOUT,
         proxy.call::<StartRelayBrainReply>(START_METHOD, (invocation.clone(),)),
-    )
-    .await
-    .map_err(|_| tinybus::Error::failed("relay brain admission exceeded its deadline"))??;
+    );
+    tokio::pin!(admission);
+    let started = loop {
+        tokio::select! {
+            biased;
+            result = &mut admission => break result.map_err(|_| tinybus::Error::failed("relay brain admission exceeded its deadline"))??,
+            () = tokio::time::sleep_until(deadline), if !foreground_closed => {
+                acknowledge(lease, request, proxy, invocation, delivery, streamed).await?;
+                foreground_closed = true;
+            },
+            () = tokio::time::sleep_until(expiry) => return lose(request, proxy, invocation, delivery, streamed, foreground_closed).await,
+        }
+    };
     if !started.started {
         return Err(tinybus::Error::failed(
             "relay brain authority is unavailable",
