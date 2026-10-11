@@ -11,6 +11,12 @@ use tinyvoice_bus::relay::runtime::{
 
 const CALLBACK_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_TEXT: usize = 256 * 1024;
+#[derive(Default)]
+struct Delivery {
+    sequence: u64,
+    unacknowledged: bool,
+}
+
 type Incoming = Pin<Box<dyn Future<Output = tinybus::Result<ReadRelayBrainReply>> + Send>>;
 
 /// Own foreground timing and background completion for one admitted turn.
@@ -36,14 +42,16 @@ pub(super) async fn run(
         runtime: tokio::runtime::Handle::current(),
         proxy: proxy.clone(),
         request: Some(invocation.clone()),
+        slots: slots.clone(),
+        permit: None,
     };
-    let mut delivery = 0_u64;
+    let mut delivery = Delivery::default();
     let result = tokio::select! {
         biased;
         ()=lease.wait_cancelled()=>Ok(()),
-        result=coordinate(&lease,&request,&proxy,&invocation,slots,&mut delivery)=>result,
+        result=coordinate(&lease,&request,&proxy,&invocation,slots,&mut finish.permit,&mut delivery)=>result,
     };
-    if result.is_err() {
+    if result.is_err() && !delivery.unacknowledged {
         // A missing completion is a fact, not an invented native reported error.
         // The host applies answerability/delivery policy to this loss.
         let _ = apply(
@@ -61,6 +69,10 @@ pub(super) async fn run(
     }
     let confirmed = finish_host(&proxy, invocation).await;
     finish.request = None;
+    if !confirmed && finish.permit.is_some() {
+        finish.slots.close();
+    }
+    finish.permit.take();
     if let Ok(mut phase) = lease.phase.lock() {
         phase.state = RelayState::Closed;
         phase.cleanup_confirmed = confirmed;
@@ -73,7 +85,8 @@ async fn coordinate(
     proxy: &tinybus::Proxy,
     invocation: &RelayInvocationRequest,
     slots: Arc<tokio::sync::Semaphore>,
-    delivery: &mut u64,
+    owned_permit: &mut Option<tokio::sync::OwnedSemaphorePermit>,
+    delivery: &mut Delivery,
 ) -> tinybus::Result<()> {
     let began = tokio::time::Instant::now();
     let deadline = began + Duration::from_millis(request.acknowledgment_deadline_ms);
@@ -82,7 +95,7 @@ async fn coordinate(
     let mut streamed = false;
     let acquire = slots.acquire_owned();
     tokio::pin!(acquire);
-    let _permit = loop {
+    *owned_permit = Some(loop {
         tokio::select! {
             biased;
             permit=&mut acquire=>break permit.map_err(|_|tinybus::Error::failed("relay scheduler is closed"))?,
@@ -91,7 +104,7 @@ async fn coordinate(
             },
             ()=tokio::time::sleep_until(expiry)=>return lose(request,proxy,invocation,delivery,streamed,foreground_closed).await,
         }
-    };
+    });
 
     let admission = tokio::time::timeout(
         CALLBACK_TIMEOUT,
@@ -209,7 +222,7 @@ async fn lose(
     request: &RelayStartRequest,
     proxy: &tinybus::Proxy,
     invocation: &RelayInvocationRequest,
-    delivery: &mut u64,
+    delivery: &mut Delivery,
     streamed: bool,
     foreground_closed: bool,
 ) -> tinybus::Result<()> {
@@ -227,7 +240,7 @@ async fn acknowledge(
     request: &RelayStartRequest,
     proxy: &tinybus::Proxy,
     invocation: &RelayInvocationRequest,
-    delivery: &mut u64,
+    delivery: &mut Delivery,
     streamed: bool,
 ) -> tinybus::Result<()> {
     let mut effects = Vec::new();
@@ -263,19 +276,20 @@ fn read(proxy: tinybus::Proxy, invocation: RelayInvocationRequest, acknowledged:
 async fn apply(
     proxy: &tinybus::Proxy,
     invocation: &RelayInvocationRequest,
-    delivery: &mut u64,
+    delivery: &mut Delivery,
     effects: Vec<RelayEffect>,
 ) -> tinybus::Result<()> {
     if effects.is_empty() {
         return Ok(());
     }
-    *delivery = delivery
+    delivery.sequence = delivery
+        .sequence
         .checked_add(1)
         .ok_or_else(|| tinybus::Error::failed("relay delivery sequence is exhausted"))?;
     let request = ApplyRelayEffectsRequest {
         context_token: invocation.context_token.clone(),
         invocation_id: invocation.invocation_id.clone(),
-        delivery_id: *delivery,
+        delivery_id: delivery.sequence,
         effects,
     };
     if !super::super::relay::fits(&request, 1024 * 1024) {
@@ -283,9 +297,11 @@ async fn apply(
             "relay effect group exceeds its serialized limit",
         ));
     }
+    delivery.unacknowledged = true;
     for _ in 0..2 {
         if matches!(tokio::time::timeout(CALLBACK_TIMEOUT,proxy.call::<ApplyRelayEffectsReply>(APPLY_METHOD,(request.clone(),))).await,Ok(Ok(reply)) if reply.applied)
         {
+            delivery.unacknowledged = false;
             return Ok(());
         }
     }
@@ -300,13 +316,20 @@ struct FinishGuard {
     runtime: tokio::runtime::Handle,
     proxy: tinybus::Proxy,
     request: Option<RelayInvocationRequest>,
+    slots: Arc<tokio::sync::Semaphore>,
+    permit: Option<tokio::sync::OwnedSemaphorePermit>,
 }
 impl Drop for FinishGuard {
     fn drop(&mut self) {
         if let Some(request) = self.request.take() {
             let proxy = self.proxy.clone();
+            let slots = self.slots.clone();
+            let permit = self.permit.take();
             self.runtime.spawn(async move {
-                let _ = finish_host(&proxy, request).await;
+                if !finish_host(&proxy, request).await && permit.is_some() {
+                    slots.close();
+                }
+                drop(permit);
             });
         }
     }
