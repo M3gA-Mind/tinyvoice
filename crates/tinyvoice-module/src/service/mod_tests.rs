@@ -1090,3 +1090,24 @@ async fn live_reservations_exist_before_provider_startup_and_can_be_released() {
         .unwrap();
     assert_eq!(released["state"], "closed");
 }
+
+
+#[tokio::test]
+async fn live_callback_access_does_not_retain_the_module_bus_name_after_drop() {
+    let bus = MemoryBus::new();
+    Broker::new().spawn(bus.clone());
+    let service = Connection::connect(bus.connect().await.unwrap()).await.unwrap();
+    setup(service.clone()).await.unwrap();
+    let client = Connection::connect(bus.connect().await.unwrap()).await.unwrap();
+    let proxy = client.proxy(BUS_NAME, OBJECT_PATH, BUS_NAME).unwrap();
+    let reserved: serde_json::Value = proxy.call("LiveReserve", ()).await.unwrap();
+    assert_eq!(reserved["state"], "reserved");
+    drop(service);
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            let reply: tinybus::Result<serde_json::Value> = proxy.call("LiveReserve", ()).await;
+            if reply.is_err() { break; }
+            tokio::task::yield_now().await;
+        }
+    }).await.expect("dropping the module owner must release its name");
+}
