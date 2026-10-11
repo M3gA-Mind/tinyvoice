@@ -1,3 +1,5 @@
+//! Portable live-session regression fixtures.
+
 use super::*;
 
 fn read_request(handle: &LiveHandle, ack: Option<u64>) -> LiveReadRequest {

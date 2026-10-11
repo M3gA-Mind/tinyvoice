@@ -66,7 +66,7 @@ pub(super) async fn run(
         }
         None => {}
     }
-    let confirmed = finish_context(&connection, &request).await;
+    let confirmed = finish_context(&connection, &request.tool_port).await;
     if let Ok(mut phase) = lease.phase.lock() {
         phase.sender = None;
         phase.state = LiveState::Closed;
@@ -139,6 +139,26 @@ fn oversized(event: &LiveAgentEvent) -> bool {
         | LiveAgentEvent::ToolFinished { call_id, name, .. } => {
             call_id.len() > MAX_TEXT_BYTES || name.len() > MAX_TEXT_BYTES
         }
+        LiveAgentEvent::Live(LiveEvent::Ready(info)) => info
+            .session_id
+            .as_ref()
+            .is_some_and(|id| id.len() > MAX_TEXT_BYTES),
+        LiveAgentEvent::Live(
+            LiveEvent::Error { error, .. } | LiveEvent::Closed(CloseReason::Error(error)),
+        ) => oversized_error(error),
+        LiveAgentEvent::Live(LiveEvent::Closed(CloseReason::Remote { reason, .. })) => {
+            reason.len() > MAX_TEXT_BYTES
+        }
+        _ => false,
+    }
+}
+
+fn oversized_error(error: &Error) -> bool {
+    match error {
+        Error::InvalidConfig(text)
+        | Error::Connect(text)
+        | Error::Provider(text)
+        | Error::Protocol(text) => text.len() > MAX_TEXT_BYTES,
         _ => false,
     }
 }
@@ -147,10 +167,13 @@ fn oversized(event: &LiveAgentEvent) -> bool {
 ///
 /// The host owns its work: it must also cancel it when its context lease drops.
 /// This notification revokes a known context; it never creates one.
-async fn finish_context(connection: &tinybus::Connection, request: &LiveStartRequest) -> bool {
+async fn finish_context(
+    connection: &tinybus::Connection,
+    port: &tinyvoice_bus::live::session::LiveToolPort,
+) -> bool {
     let Ok(proxy) = connection.proxy(
-        request.tool_port.bus_name.as_str(),
-        request.tool_port.object_path.as_str(),
+        port.bus_name.as_str(),
+        port.object_path.as_str(),
         TOOL_CALLBACK_INTERFACE,
     ) else {
         return false;
@@ -158,7 +181,7 @@ async fn finish_context(connection: &tinybus::Connection, request: &LiveStartReq
     let call = proxy.call::<FinishLiveContextReply>(
         FINISH_CALLBACK_METHOD,
         (FinishLiveContextRequest {
-            context_token: request.tool_port.context_token.clone(),
+            context_token: port.context_token.clone(),
         },),
     );
     matches!(tokio::time::timeout(FINISH_TIMEOUT, call).await, Ok(Ok(reply)) if reply.finished)

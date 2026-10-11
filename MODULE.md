@@ -4,7 +4,7 @@ This package contains the native `tinyvoice` module for TinyBus module ABI v1.
 Install only the archive matching the host operating system and architecture.
 
 The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
-`/ai/tinyhumans/tinyvoice/Voice`, and provides 34 methods under contract 1.6.
+`/ai/tinyhumans/tinyvoice/Voice`, and provides 41 methods under contract 1.7.
 
 ## Methods
 
@@ -21,6 +21,13 @@ The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
 | `VadReset` | `session` | — |
 | `VadClose` | `session` | — |
 | `PrepareRelayTurn` | `RelayTurnRequest { messages, readback_prefix }` | `PreparedRelayTurn`: prompt, ordered history pairs, optional readback payload, content-free, speak-back and answerable flags |
+| `PrepareLiveInput` | `PrepareLiveInputRequest { awaiting_start, frame }` | parsed control or transport action; host owns policy validation |
+| `LiveReserve` | none | opaque `LiveStatus` reserved before connection startup |
+| `LiveStart` | `LiveStartRequest` | idempotent starting/running status for identical inputs |
+| `LiveSend` | handle and text, PCM16 audio, interrupt or stop command | status after bounded input admission |
+| `LiveRead` | handle and optional acknowledged batch | bounded replayable ordered frames and persistence effects |
+| `LiveRelease` | handle | closed status after bounded provider/context cleanup |
+| `LiveShutdown` | none | terminal admission shutdown and concurrent bounded cleanup |
 | `PrepareFrames` | `samples`, `source_rate`, `channels` | base64 `f32` mono @ 16 kHz |
 | `FrameEnergies` | `samples`, `frame_len` | per-frame RMS |
 | `EncodeWav` | `samples` (`f32` mono), `sample_rate` | base64 WAV |

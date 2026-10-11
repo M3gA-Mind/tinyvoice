@@ -1,3 +1,5 @@
+//! Portable live-session regression fixtures.
+
 use super::*;
 
 #[test]

@@ -1,3 +1,5 @@
+//! Portable live-session regression fixtures.
+
 use super::*;
 use tinyagents_live::tinyliveagents::{AudioFormat, Error as LiveError, SessionInfo, ToolCall};
 
