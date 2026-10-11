@@ -1,5 +1,7 @@
 //! Portable live websocket control vocabulary.
 
+pub mod session;
+
 use serde::{Deserialize, Serialize};
 
 /// A client control frame; audio travels separately as PCM16 bytes.
@@ -88,4 +90,77 @@ pub enum LiveTransportAction {
     Closed,
     /// No provider action.
     Ignore,
+}
+
+/// Who a final transcript belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptRole {
+    /// Spoken or typed user input.
+    User,
+    /// Spoken assistant output.
+    Agent,
+}
+
+/// A live server JSON frame; audio remains a separate binary transport action.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ServerFrame {
+    /// The provider connected.
+    Ready {
+        /// Provider session identity or the host fallback.
+        session_id: Option<String>,
+        /// Host-selected provider identifier.
+        provider: String,
+        /// Mono PCM16 output sample rate.
+        output_sample_rate: u32,
+        /// Opaque host transcript identity.
+        thread_id: Option<String>,
+    },
+    /// Partial or final speech transcript.
+    Transcript {
+        /// User or agent speech.
+        role: TranscriptRole,
+        /// Original transcript text.
+        text: String,
+        /// Whether this completes the utterance.
+        #[serde(rename = "final")]
+        is_final: bool,
+    },
+    /// A provider tool call entered the harness.
+    ToolStarted {
+        /// Provider call identity.
+        call_id: String,
+        /// Declared tool name.
+        name: String,
+    },
+    /// A tool call completed or was cancelled.
+    ToolFinished {
+        /// Provider call identity.
+        call_id: String,
+        /// Declared tool name.
+        name: String,
+        /// Whether the result was successful.
+        ok: bool,
+        /// Whether the provider cancelled the result.
+        cancelled: bool,
+    },
+    /// Provider playback was interrupted.
+    Interrupted,
+    /// The provider completed its turn.
+    TurnComplete,
+    /// A provider or connection error.
+    Error {
+        /// Stable portable error classification.
+        code: String,
+        /// Provider diagnostic.
+        message: String,
+        /// Whether the provider is terminating.
+        fatal: bool,
+    },
+    /// The provider connection ended.
+    Closed {
+        /// Established close diagnostic.
+        reason: String,
+    },
 }

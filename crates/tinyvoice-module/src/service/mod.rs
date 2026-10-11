@@ -696,6 +696,7 @@ tinybus_module::module_export_optional_static! {
         "VadClose",
         "PrepareFrames",
         "PrepareRelayTurn",
+        "PrepareLiveInput",
         "FrameEnergies",
         "CaptureStart",
         "CapturePoll",
