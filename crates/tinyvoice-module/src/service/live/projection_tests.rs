@@ -23,12 +23,15 @@ fn ready_uses_the_provider_session_id_or_ours() {
             thread_id: Some("thread".into())
         })]
     );
-    let json(ServerFrame::Ready { session_id, .. }) = &map(LiveEvent::Ready(info(Some("p"))))[0]
-    else {
-        assert!(false, "expected ready");
-        return;
-    };
-    assert_eq!(session_id.as_deref(), Some("p"));
+    assert_eq!(
+        map(LiveEvent::Ready(info(Some("p")))),
+        vec![json(ServerFrame::Ready {
+            session_id: Some("p".into()),
+            provider: "sarvam".into(),
+            output_sample_rate: 24_000,
+            thread_id: Some("thread".into()),
+        })]
+    );
 }
 
 #[test]
