@@ -336,3 +336,26 @@ async fn cancelling_an_active_idle_session_terminates_the_native_provider_driver
     assert_eq!(cleanup.finishes.load(Ordering::SeqCst), 1);
     Ok(())
 }
+
+#[tokio::test]
+async fn dropped_output_consumer_stops_native_audio_without_leaving_provider_work()
+-> anyhow::Result<()> {
+    let (module, _host, port, cleanup) = cleanup_fixture(false).await?;
+    let mut request: LiveStartRequest = serde_json::from_str(include_str!("fixtures/start.json"))?;
+    request.tool_port = port;
+    let mut prepared = super::super::prepare::prepare(&request, &module)?;
+    prepared.provider = Box::new(AudioProvider(prepared.provider.capabilities()));
+    let lease = Arc::new(Lease::new());
+    super::super::table::tests::close_output_reader(&lease).await;
+    run(lease.clone(), request, prepared, module).await;
+    assert_eq!(cleanup.finishes.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        lease
+            .phase
+            .lock()
+            .map_err(|_| anyhow::anyhow!("fixture lock"))?
+            .state,
+        LiveState::Closed
+    );
+    Ok(())
+}

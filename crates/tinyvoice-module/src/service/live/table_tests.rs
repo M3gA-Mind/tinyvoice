@@ -354,3 +354,8 @@ async fn live_admission_rejects_changed_expired_and_oversized_inputs_before_conn
     sessions.release(request.handle).await?;
     Ok(())
 }
+
+/// Script the module's output consumer disappearing while a provider is active.
+pub(in crate::service::live) async fn close_output_reader(lease: &Lease) {
+    lease.reader.lock().await.rx.close();
+}

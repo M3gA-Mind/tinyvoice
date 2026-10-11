@@ -456,7 +456,7 @@ fn unavailable() -> tinybus::Error {
 
 #[cfg(test)]
 #[path = "table_tests.rs"]
-mod tests;
+pub(super) mod tests;
 
 /// Generate unpredictable correlation identities without deriving host secrets.
 pub(super) fn random_id() -> tinybus::Result<String> {
