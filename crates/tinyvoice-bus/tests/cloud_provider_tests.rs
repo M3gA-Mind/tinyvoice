@@ -205,3 +205,16 @@ fn provider_errors_preserve_categories_independently_of_display_text()
     }
     Ok(())
 }
+
+#[test]
+fn provider_failures_use_the_crate_wide_result() {
+    let provider = HostProvider;
+    let mut context = Context::from_waker(Waker::noop());
+    let result: Poll<tinyvoice_bus::Result<Transcription>> = provider
+        .transcribe(TranscriptionRequest::default())
+        .as_mut()
+        .poll(&mut context);
+    assert_eq!(result, Poll::Ready(Err(tinyvoice_bus::Error::InvalidInput {
+        message: "audio is required".into(),
+    })));
+}
