@@ -2296,6 +2296,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.22.1",
+ "futures-util",
  "getrandom 0.4.3",
  "rustix",
  "serde",
@@ -2309,6 +2310,7 @@ dependencies = [
  "tinyvoice-bus",
  "tinyvoice-hotkey-win",
  "tokio",
+ "tokio-tungstenite",
  "x11rb",
 ]
 

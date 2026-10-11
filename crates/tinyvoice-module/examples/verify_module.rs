@@ -13,7 +13,10 @@ use tinybus::transport::memory::MemoryBus;
 // example once ended up dialling `/ai.tinyhumans.tinyvoice.Voice` — a bus name
 // where an object path belongs — while the module served the correct path and
 // every in-process test still passed.
-use tinyvoice_module::{BUS_NAME, OBJECT_PATH};
+use tinyvoice_bus::{BUS_NAME, OBJECT_PATH};
+
+#[path = "verify_module/live.rs"]
+mod live;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -69,6 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     verify_relay_turn(&proxy).await?;
     verify_live_input(&proxy).await?;
+    live::verify_runtime(&proxy, &client).await?;
     verify_recording_summary(&proxy).await?;
     // Default-denied permission must reject before any native device is opened.
     let denied: tinyvoice_bus::capture::CaptureResult<tinyvoice_bus::capture::CaptureHandle> =

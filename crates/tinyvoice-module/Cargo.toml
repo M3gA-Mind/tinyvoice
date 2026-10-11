@@ -81,6 +81,8 @@ broken_intra_doc_links = "warn"
 private_intra_doc_links = "warn"
 
 [dev-dependencies]
+futures-util = "0.3"
+tokio-tungstenite = "0.29"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "test-util"] }
 
 [patch.crates-io]
