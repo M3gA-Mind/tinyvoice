@@ -59,6 +59,7 @@ pub struct VoiceService {
     sessions: std::sync::Mutex<Sessions>,
     capture: std::sync::Arc<capture::Capture>,
     hotkeys: std::sync::Arc<hotkey::Hotkeys>,
+    live: std::sync::Arc<live::Sessions>,
 }
 
 /// The session table and the counter that names its entries.
@@ -188,6 +189,42 @@ fn to_json<T: serde::Serialize>(value: &T) -> TinyBusResult<String> {
 )]
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.Voice")]
 impl VoiceService {
+    /// Reserve a bounded live lease before any provider connection begins.
+    async fn live_reserve(&self) -> TinyBusResult<tinyvoice_bus::live::session::LiveStatus> {
+        self.live.reserve()
+    }
+    /// Begin provider startup idempotently on a known reservation.
+    async fn live_start(
+        &self,
+        request: tinyvoice_bus::live::session::LiveStartRequest,
+    ) -> TinyBusResult<tinyvoice_bus::live::session::LiveStatus> {
+        self.live.start(request)
+    }
+    /// Forward bounded input to the existing native provider sender.
+    async fn live_send(
+        &self,
+        request: tinyvoice_bus::live::session::LiveSendRequest,
+    ) -> TinyBusResult<tinyvoice_bus::live::session::LiveStatus> {
+        self.live.send(request).await
+    }
+    /// Read ordered effects, replaying the current batch until acknowledgement.
+    async fn live_read(
+        &self,
+        request: tinyvoice_bus::live::session::LiveReadRequest,
+    ) -> TinyBusResult<tinyvoice_bus::live::session::LiveBatch> {
+        self.live.read(request).await
+    }
+    /// Stop owned tasks and notify host context cleanup within a finite deadline.
+    async fn live_release(
+        &self,
+        request: tinyvoice_bus::live::session::LiveHandleRequest,
+    ) -> TinyBusResult<tinyvoice_bus::live::session::LiveStatus> {
+        self.live.release(request.handle).await
+    }
+    /// Permanently close admission and stop all owned live tasks.
+    async fn live_shutdown(&self) -> TinyBusResult<()> {
+        self.live.shutdown().await
+    }
     /// Parse portable live control frames without applying host policy.
     async fn prepare_live_input(
         &self,
@@ -674,7 +711,13 @@ impl VoiceService {
 /// Claim the bus name and serve the interface.
 async fn setup(connection: Connection) -> TinyBusResult<()> {
     connection
-        .serve_at(names::OBJECT_PATH.try_into()?, VoiceService::default())
+        .serve_at(
+            names::OBJECT_PATH.try_into()?,
+            VoiceService {
+                live: std::sync::Arc::new(live::Sessions::with_connection(connection.clone())),
+                ..VoiceService::default()
+            },
+        )
         .await?;
     connection.request_name(names::BUS_NAME).await?;
     Ok(())
@@ -698,6 +741,12 @@ tinybus_module::module_export_optional_static! {
         "PrepareFrames",
         "PrepareRelayTurn",
         "PrepareLiveInput",
+        "LiveReserve",
+        "LiveStart",
+        "LiveSend",
+        "LiveRead",
+        "LiveRelease",
+        "LiveShutdown",
         "FrameEnergies",
         "CaptureStart",
         "CapturePoll",

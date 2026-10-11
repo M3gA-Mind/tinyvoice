@@ -8,6 +8,18 @@ pub const OBJECT_PATH: &str = "/ai/tinyhumans/tinyvoice/Voice";
 
 /// One constant per member of [`BUS_NAME`].
 pub mod methods {
+    /// Reserve a bounded live session before startup.
+    pub const LIVE_RESERVE: &str = "LiveReserve";
+    /// Start native provider and tool-loop execution on a reserved handle.
+    pub const LIVE_START: &str = "LiveStart";
+    /// Forward bounded audio, text, interrupt or stop input.
+    pub const LIVE_SEND: &str = "LiveSend";
+    /// Read an ordered replayable live event batch.
+    pub const LIVE_READ: &str = "LiveRead";
+    /// Release a live session and notify host context cleanup.
+    pub const LIVE_RELEASE: &str = "LiveRelease";
+    /// Close admission and stop all owned live sessions.
+    pub const LIVE_SHUTDOWN: &str = "LiveShutdown";
     /// Parse an initial or later portable live control frame.
     pub const PREPARE_LIVE_INPUT: &str = "PrepareLiveInput";
     /// Extracts and classifies a provider-relayed conversational turn.
@@ -104,6 +116,12 @@ pub const METHODS: &[&str] = &[
     methods::HOTKEY_STOP,
     methods::IS_HALLUCINATED,
     methods::LIST_INPUT_DEVICES,
+    methods::LIVE_READ,
+    methods::LIVE_RELEASE,
+    methods::LIVE_RESERVE,
+    methods::LIVE_SEND,
+    methods::LIVE_SHUTDOWN,
+    methods::LIVE_START,
     methods::PREPARE_CAPTURE,
     methods::PREPARE_FRAMES,
     methods::PREPARE_LIVE_INPUT,

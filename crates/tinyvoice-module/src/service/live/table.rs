@@ -93,7 +93,7 @@ impl Lease {
 }
 
 /// Admission table; shutdown permanently closes this module instance.
-pub(super) struct Sessions {
+pub(in crate::service) struct Sessions {
     closed: AtomicBool,
     leases: Mutex<HashMap<LiveHandle, Arc<Lease>>>,
     connection: Mutex<Option<tinybus::Connection>>,
@@ -121,7 +121,8 @@ impl Sessions {
     pub(super) fn with_connection(connection: tinybus::Connection) -> Self {
         Self {
             connection: Mutex::new(Some(connection)),
-            ..Self::default()
+            closed: AtomicBool::new(false),
+            leases: Mutex::new(HashMap::new()),
         }
     }
 

@@ -155,7 +155,7 @@ async fn finish_context(connection: &tinybus::Connection, request: &LiveStartReq
     ) else {
         return false;
     };
-    let call = proxy.call::<_, FinishLiveContextReply>(
+    let call = proxy.call::<FinishLiveContextReply>(
         FINISH_CALLBACK_METHOD,
         (FinishLiveContextRequest {
             context_token: request.tool_port.context_token.clone(),
