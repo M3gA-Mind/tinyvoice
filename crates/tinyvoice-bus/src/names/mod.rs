@@ -8,7 +8,7 @@ pub const OBJECT_PATH: &str = "/ai/tinyhumans/tinyvoice/Voice";
 
 /// One constant per member of [`BUS_NAME`].
 pub mod methods {
-    /// Reserve a bounded live session before startup.
+    /// Bind the module-owned socket coordinator before provider startup.
     pub const LIVE_BIND_TRANSPORT: &str = "LiveBindTransport";
     /// Reserve a live provider session.
     pub const LIVE_RESERVE: &str = "LiveReserve";
