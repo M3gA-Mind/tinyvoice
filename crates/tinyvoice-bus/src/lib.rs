@@ -13,6 +13,7 @@
 pub mod capture;
 pub mod hotkey;
 pub mod intent;
+pub mod live;
 pub mod names;
 pub mod relay;
 pub mod transcript;

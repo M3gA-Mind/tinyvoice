@@ -8,6 +8,8 @@ pub const OBJECT_PATH: &str = "/ai/tinyhumans/tinyvoice/Voice";
 
 /// One constant per member of [`BUS_NAME`].
 pub mod methods {
+    /// Parse an initial or later portable live control frame.
+    pub const PREPARE_LIVE_INPUT: &str = "PrepareLiveInput";
     /// Extracts and classifies a provider-relayed conversational turn.
     pub const PREPARE_RELAY_TURN: &str = "PrepareRelayTurn";
     /// Reserves a hotkey lease before native startup.
@@ -104,6 +106,7 @@ pub const METHODS: &[&str] = &[
     methods::LIST_INPUT_DEVICES,
     methods::PREPARE_CAPTURE,
     methods::PREPARE_FRAMES,
+    methods::PREPARE_LIVE_INPUT,
     methods::PREPARE_RELAY_TURN,
     methods::READ_AUDIO_OUTPUT,
     methods::RECORDING_CANCEL,

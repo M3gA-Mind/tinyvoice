@@ -187,6 +187,14 @@ fn to_json<T: serde::Serialize>(value: &T) -> TinyBusResult<String> {
 )]
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.Voice")]
 impl VoiceService {
+    /// Parse portable live control frames without applying host policy.
+    async fn prepare_live_input(
+        &self,
+        request: tinyvoice_bus::live::PrepareLiveInputRequest,
+    ) -> TinyBusResult<tinyvoice_bus::live::PreparedLiveInput> {
+        tinyvoice::live::prepare_input(request)
+            .map_err(|error| tinybus::Error::failed(error.to_string()))
+    }
     /// Prepare provider-relayed text without executing the host agent.
     async fn prepare_relay_turn(
         &self,

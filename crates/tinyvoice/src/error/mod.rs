@@ -12,6 +12,10 @@ mod test;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    /// A live connection's first frame did not satisfy its control protocol.
+    #[error("{0}")]
+    LiveProtocol(String),
+
     /// A sample rate of zero was supplied.
     ///
     /// Every duration in this crate is derived by dividing by the sample rate,
