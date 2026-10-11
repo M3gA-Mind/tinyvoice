@@ -5,7 +5,7 @@
 //! credentials, or product configuration. The implementation owns authentication,
 //! endpoint selection and network I/O. Capture, VAD, hotkeys and other module
 //! operations continue to use the compiled module; these traits do not replace
-//! its execution path or introduce additional TinyBus methods.
+//! its execution path or introduce additional `TinyBus` methods.
 
 use std::{future::Future, pin::Pin};
 
