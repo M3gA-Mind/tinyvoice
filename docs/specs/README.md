@@ -27,3 +27,7 @@ The accepted hotkey lifecycle is specified in
 
 Relay turn preparation is documented in
 [`relay-turn-preparation.md`](relay-turn-preparation.md).
+
+The module-owned relay queue, acknowledgment deadlines and saved native
+context callbacks are specified in
+[`relay-module-runtime.md`](relay-module-runtime.md).
