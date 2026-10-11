@@ -556,3 +556,60 @@ async fn unknown_and_late_finish_cannot_create_or_revive_native_work() -> tinybu
     turns.release(handle).await?;
     Ok(())
 }
+
+#[tokio::test(start_paused = true)]
+async fn overall_deadline_finishes_queued_and_active_turns_without_inventing_native_completion()
+-> tinybus::Result<()> {
+    for queued in [false, true] {
+        let brain = Brain::default();
+        let (turns, _module, _host) = fixture(brain.clone(), 1).await?;
+        let first = if queued {
+            let first = turns.reserve()?.handle;
+            start(&turns, &brain, request(first.clone(), "occupant", 5000)).await?;
+            brain.entered.notified().await;
+            Some(first)
+        } else {
+            None
+        };
+        let handle = turns.reserve()?.handle;
+        let mut request = request(handle.clone(), "expiring", 10);
+        request.turn_timeout_ms = 100;
+        start(&turns, &brain, request).await?;
+        if !queued {
+            brain.entered.notified().await;
+        }
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(100)).await;
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if brain.finishes.lock().await.contains(&handle.id) {
+                    break;
+                }
+                brain.finished.notified().await;
+            }
+        })
+        .await
+        .map_err(|_| tinybus::Error::failed("fixture overall expiry deadline"))?;
+        assert_eq!(
+            brain.effects.lock().await["expiring"],
+            [
+                RelayEffect::Delta {
+                    text: "working".into()
+                },
+                RelayEffect::Done,
+                RelayEffect::Deferred {
+                    outcome: RelayOutcome::Lost
+                },
+            ]
+        );
+        assert_eq!(
+            brain.invocations.lock().await.contains_key("expiring"),
+            !queued
+        );
+        turns.release(handle).await?;
+        if let Some(first) = first {
+            turns.release(first).await?;
+        }
+    }
+    Ok(())
+}
