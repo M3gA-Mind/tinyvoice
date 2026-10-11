@@ -55,6 +55,11 @@ pub struct RelayStatus {
 }
 
 /// Saved host authority; the module cannot recover it from model arguments.
+///
+/// Before start, bind the reserved module handle to this existing host context.
+/// Every callback verifies that exact pair, including queued acknowledgments
+/// and cleanup before native execution. Callbacks never register authority from
+/// request fields or invent an executor for an unknown context.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RelayHostPort {
     /// Host bus name.

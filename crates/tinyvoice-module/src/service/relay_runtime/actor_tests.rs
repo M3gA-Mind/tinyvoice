@@ -8,6 +8,7 @@ use tokio::sync::{Mutex, Notify};
 
 #[derive(Clone, Default)]
 struct Brain {
+    authorities: Arc<Mutex<HashMap<String, String>>>,
     invocations: Arc<Mutex<HashMap<String, String>>>,
     events: Arc<Mutex<HashMap<String, VecDeque<RelayBrainEvent>>>>,
     retained: Arc<Mutex<HashMap<String, (u64, RelayBrainEvent)>>>,
@@ -28,7 +29,9 @@ impl Brain {
         &self,
         request: RelayInvocationRequest,
     ) -> tinybus::Result<StartRelayBrainReply> {
-        if self.reject_authority {
+        if self.authorities.lock().await.get(&request.context_token) != Some(&request.invocation_id)
+            || self.reject_authority
+        {
             return Ok(StartRelayBrainReply { started: false });
         }
         self.invocations
@@ -90,6 +93,10 @@ impl Brain {
         &self,
         request: ApplyRelayEffectsRequest,
     ) -> tinybus::Result<ApplyRelayEffectsReply> {
+        if self.authorities.lock().await.get(&request.context_token) != Some(&request.invocation_id)
+        {
+            return Ok(ApplyRelayEffectsReply { applied: false });
+        }
         if self
             .committed
             .lock()
@@ -110,7 +117,7 @@ impl Brain {
         &self,
         request: RelayInvocationRequest,
     ) -> tinybus::Result<FinishRelayBrainReply> {
-        if self.invocations.lock().await.get(&request.context_token) != Some(&request.invocation_id)
+        if self.authorities.lock().await.get(&request.context_token) != Some(&request.invocation_id)
         {
             return Ok(FinishRelayBrainReply { finished: false });
         }
@@ -187,7 +194,7 @@ async fn acknowledgment_deadline_remains_live_while_the_host_start_callback_is_p
     };
     let (turns, _module, _host) = fixture(brain.clone(), 1).await?;
     let handle = turns.reserve()?.handle;
-    turns.start(request(handle.clone(), "pending", 100))?;
+    start(&turns, &brain, request(handle.clone(), "pending", 100)).await?;
     brain.entered.notified().await;
     tokio::time::advance(Duration::from_millis(100)).await;
     let effects = tokio::time::timeout(Duration::from_millis(350), wait_effect(&brain, "pending"))
@@ -226,7 +233,7 @@ async fn selected_deltas_preserve_whitespace_and_precede_done_without_whole_repl
     let (turns, _module, _host) = fixture(brain.clone(), 1).await?;
     let handle = turns.reserve()?.handle;
     let request = request(handle.clone(), "stream", 1000);
-    turns.start(request.clone())?;
+    start(&turns, &brain, request.clone()).await?;
     turns.start(request)?;
     tokio::time::timeout(Duration::from_secs(1), brain.finished.notified())
         .await
@@ -252,10 +259,10 @@ async fn queued_turn_acknowledges_before_a_native_execution_slot_becomes_availab
     let brain = Brain::default();
     let (turns, _module, _host) = fixture(brain.clone(), 1).await?;
     let first = turns.reserve()?.handle;
-    turns.start(request(first.clone(), "first", 5000))?;
+    start(&turns, &brain, request(first.clone(), "first", 5000)).await?;
     brain.entered.notified().await;
     let second = turns.reserve()?.handle;
-    turns.start(request(second.clone(), "second", 100))?;
+    start(&turns, &brain, request(second.clone(), "second", 100)).await?;
     tokio::time::advance(Duration::from_millis(100)).await;
     assert_eq!(
         wait_effect(&brain, "second").await?,
@@ -320,5 +327,20 @@ async fn queued_turn_acknowledges_before_a_native_execution_slot_becomes_availab
         ]
     );
     turns.release(second).await?;
+    Ok(())
+}
+
+/// The host binds the returned module lease to its existing saved context.
+/// Neither a callback nor a provider-selected id can manufacture authority.
+async fn start(
+    turns: &super::super::table::Turns,
+    brain: &Brain,
+    request: RelayStartRequest,
+) -> tinybus::Result<()> {
+    brain.authorities.lock().await.insert(
+        request.port.context_token.clone(),
+        request.handle.id.clone(),
+    );
+    turns.start(request)?;
     Ok(())
 }
