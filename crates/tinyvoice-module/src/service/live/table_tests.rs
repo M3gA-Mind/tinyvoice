@@ -78,7 +78,7 @@ async fn unacknowledged_batches_replay_without_repeating_committed_persistence()
     let empty = sessions
         .read(read_request(&handle, Some(second.batch)))
         .await?;
-    assert!(empty.outputs.is_empty());
+    assert_eq!(empty.outputs, vec![]);
     assert_eq!(empty.batch, second.batch);
     sessions.shutdown().await
 }

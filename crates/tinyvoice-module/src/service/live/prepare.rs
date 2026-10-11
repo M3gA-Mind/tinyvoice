@@ -45,6 +45,14 @@ pub(super) fn prepare(
             "live timeout and tool-call bounds must be positive and finite",
         ));
     }
+    if [&request.session_id, &request.provider, &request.thread_id]
+        .iter()
+        .any(|text| text.len() > 16 * 1024)
+    {
+        return Err(tinybus::Error::failed(
+            "live display metadata exceeds its output-safe limit",
+        ));
+    }
     let mut names = HashSet::new();
     let mut harness = AgentHarness::<(), ()>::new();
     for declaration in &request.configuration.tools {

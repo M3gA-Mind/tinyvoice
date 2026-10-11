@@ -19,14 +19,17 @@ struct Authority {
     entered: Arc<tokio::sync::Notify>,
     cancel_execution: Arc<tokio::sync::Notify>,
     cancelled: Arc<tokio::sync::Notify>,
-    cancellations: Arc<Mutex<Vec<Value>>>,
+    cancellations: Arc<tokio::sync::Mutex<Vec<CancelLiveToolRequest>>>,
 }
 
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.LiveTools")]
 impl Authority {
-    async fn cancel_live_tool(&self, request: Value) -> tinybus::Result<Value> {
-        if request.get("context_token").and_then(Value::as_str) != Some("known-context") {
-            return Ok(json!({"cancelled": false}));
+    async fn cancel_live_tool(
+        &self,
+        request: CancelLiveToolRequest,
+    ) -> tinybus::Result<CancelLiveToolReply> {
+        if request.context_token != "known-context" {
+            return Ok(CancelLiveToolReply { cancelled: false });
         }
         let known = self
             .seen
@@ -34,23 +37,18 @@ impl Authority {
             .map_err(|_| tinybus::Error::failed("fixture lock"))?
             .iter()
             .any(|seen| {
-                request.get("invocation_id").and_then(Value::as_str)
-                    == Some(seen.invocation_id.as_str())
-                    && request.get("call_id").and_then(Value::as_str) == Some(seen.call_id.as_str())
+                request.invocation_id == seen.invocation_id && request.call_id == seen.call_id
             });
         if !known {
-            return Ok(json!({"cancelled": false}));
+            return Ok(CancelLiveToolReply { cancelled: false });
         }
-        let mut cancellations = self
-            .cancellations
-            .lock()
-            .map_err(|_| tinybus::Error::failed("fixture lock"))?;
+        let mut cancellations = self.cancellations.lock().await;
         if !cancellations.contains(&request) {
             cancellations.push(request);
             self.cancel_execution.notify_one();
             self.cancelled.notify_one();
         }
-        Ok(json!({"cancelled": true}))
+        Ok(CancelLiveToolReply { cancelled: true })
     }
     async fn execute_live_tool(
         &self,
@@ -197,12 +195,13 @@ async fn oversized_tool_arguments_fail_before_calling_host_executor() -> anyhow:
         .await
         .is_err()
     );
-    assert!(
+    assert_eq!(
         authority
             .seen
             .lock()
             .map_err(|_| anyhow::anyhow!("fixture lock"))?
-            .is_empty()
+            .len(),
+        0
     );
     Ok(())
 }
@@ -230,17 +229,14 @@ async fn dropping_native_callback_notifies_host_to_cancel_its_known_invocation()
         authority.cancelled.notified(),
     )
     .await?;
-    let cancellations = authority
-        .cancellations
-        .lock()
-        .map_err(|_| anyhow::anyhow!("fixture lock"))?;
+    let cancellations = authority.cancellations.lock().await;
     assert_eq!(cancellations.len(), 1);
-    assert_eq!(cancellations[0]["call_id"], "cancelled-provider-call");
+    assert_eq!(cancellations[0].call_id, "cancelled-provider-call");
     let seen = authority
         .seen
         .lock()
         .map_err(|_| anyhow::anyhow!("fixture lock"))?;
-    assert_eq!(cancellations[0]["invocation_id"], seen[0].invocation_id);
+    assert_eq!(cancellations[0].invocation_id, seen[0].invocation_id);
     assert_eq!(seen[0].invocation_id.len(), 32);
     Ok(())
 }
