@@ -19,6 +19,9 @@ struct Brain {
     entered: Arc<Notify>,
     applied: Arc<Notify>,
     finished: Arc<Notify>,
+    admission_cancel: Arc<Notify>,
+    admission_exited: Arc<Notify>,
+    admission_stopped: Arc<std::sync::atomic::AtomicBool>,
     hold_start: bool,
     hold_finish: bool,
     reject_authority: bool,
@@ -44,7 +47,10 @@ impl Brain {
             .or_insert(request.invocation_id);
         self.entered.notify_one();
         if self.hold_start {
-            std::future::pending::<()>().await;
+            self.admission_cancel.notified().await;
+            self.admission_stopped.store(true, std::sync::atomic::Ordering::SeqCst);
+            self.admission_exited.notify_one();
+            return Err(tinybus::Error::failed("fixture native admission cancelled"));
         }
         Ok(StartRelayBrainReply { started: true })
     }
@@ -126,6 +132,10 @@ impl Brain {
         }
         if self.hold_finish {
             std::future::pending::<()>().await;
+        }
+        if self.hold_start && !self.admission_stopped.load(std::sync::atomic::Ordering::SeqCst) {
+            self.admission_cancel.notify_one();
+            self.admission_exited.notified().await;
         }
         self.finishes.lock().await.insert(request.invocation_id);
         self.finished.notify_one();
@@ -212,7 +222,8 @@ async fn acknowledgment_deadline_remains_live_while_the_host_start_callback_is_p
             RelayEffect::Done
         ]
     );
-    let _ = turns.release(handle).await;
+    turns.release(handle).await?;
+    assert!(brain.admission_stopped.load(std::sync::atomic::Ordering::SeqCst));
     Ok(())
 }
 
@@ -446,6 +457,7 @@ async fn unknown_or_currently_revoked_native_authority_never_starts_an_executor(
         .await
         .map_err(|_| tinybus::Error::failed("fixture finish deadline"))?;
     assert!(brain.invocations.lock().await.is_empty());
+    assert!(brain.effects.lock().await["revoked"].iter().any(|effect| matches!(effect, RelayEffect::Error { .. })));
     assert!(
         !brain.effects.lock().await["revoked"]
             .iter()
