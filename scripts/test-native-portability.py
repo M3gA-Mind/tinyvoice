@@ -1,5 +1,6 @@
 """Compile the native listener boundary without a supported platform backend."""
 from pathlib import Path
+import os
 import re
 import subprocess
 import tempfile
@@ -19,6 +20,7 @@ class NativePortabilityTests(unittest.TestCase):
         target.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=target) as directory:
             root = Path(directory)
+            executable = root / ("native-portability.exe" if os.name == "nt" else "native-portability")
             (root / "native.rs").write_text(source)
             (root / "main.rs").write_text('''
 extern crate self as tinyvoice_bus;
@@ -40,11 +42,11 @@ fn main() {
 ''')
             result = subprocess.run(
                 ["rustc", "--edition=2024", "-Dwarnings", str(root / "main.rs"),
-                 "-o", str(root / "native-portability")],
+                 "-o", str(executable)],
                 text=True, capture_output=True,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            subprocess.run([str(root / "native-portability")], check=True)
+            subprocess.run([str(executable)], check=True)
 
 
 if __name__ == "__main__":
