@@ -34,7 +34,7 @@
 //!
 //! # Live sessions
 //!
-//! The module owns generic provider/tool execution through TinyAgentsLive and
+//! The module owns generic provider/tool execution through `TinyAgentsLive` and
 //! the bounded client/provider coordinator. Hosts supply connection material,
 //! current tool authority, mechanical socket callbacks and persistence. No
 //! module method obtains product credentials or selects product policy.

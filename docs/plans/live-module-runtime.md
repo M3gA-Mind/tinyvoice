@@ -13,7 +13,7 @@ Specification: ../specs/live-module-runtime.md.
    events until explicit release.
 4. Verify a real compiled native module against a local provider and a
    policy-aware callback; migrate websocket and lifecycle fixtures.
-5. Add the portable relay coordinator with host timing/completion ports where
+5. In a separate owner follow-up, add the portable relay coordinator with host timing/completion ports where
    extraction preserves the existing acknowledgment and deferred delivery
    semantics. Keep product model, progress filtering and delivery choices out
    of the module.
