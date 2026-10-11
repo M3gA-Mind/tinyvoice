@@ -125,7 +125,8 @@ async fn shutdown_has_one_cleanup_deadline_for_all_unresponsive_sessions() -> ti
     for _ in 0..3 {
         let handle = sessions.reserve()?.handle;
         let dropped = Arc::new(AtomicBool::new(false));
-        blocked_task(&sessions.lease(&handle)?, dropped.clone())?;
+        let lease = sessions.lease(&handle)?;
+        blocked_task(&lease, dropped.clone())?;
         guards.push(dropped);
     }
     tokio::task::yield_now().await;
@@ -143,7 +144,8 @@ async fn dropping_module_aborts_owned_workers_without_waiting_for_host_cleanup()
     let sessions = Sessions::default();
     let handle = sessions.reserve()?.handle;
     let dropped = Arc::new(AtomicBool::new(false));
-    blocked_task(&sessions.lease(&handle)?, dropped.clone())?;
+    let lease = sessions.lease(&handle)?;
+    blocked_task(&lease, dropped.clone())?;
     tokio::task::yield_now().await;
     drop(sessions);
     tokio::task::yield_now().await;
