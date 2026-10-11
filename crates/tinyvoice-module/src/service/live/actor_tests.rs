@@ -4,6 +4,13 @@ use super::*;
 
 #[test]
 fn oversized_provider_errors_are_rejected_before_event_projection() {
+    for error in [
+        Error::InvalidConfig("x".repeat(MAX_TEXT_BYTES + 1)),
+        Error::Connect("x".repeat(MAX_TEXT_BYTES + 1)),
+    ] {
+        assert!(oversized_error(&error));
+    }
+    assert!(!oversized_error(&Error::Timeout));
     let error = Error::Provider("x".repeat(MAX_TEXT_BYTES + 1));
     assert!(oversized(&LiveAgentEvent::Live(LiveEvent::Error {
         error: error.clone(),
@@ -242,5 +249,14 @@ async fn cancellation_before_connect_still_finishes_the_known_host_context() -> 
             .map_err(|_| anyhow::anyhow!("fixture lock"))?
             .cleanup_confirmed
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn malformed_finish_endpoint_cannot_acknowledge_host_cleanup() -> tinybus::Result<()> {
+    let (module, _host, mut port, cleanup) = cleanup_fixture(false).await?;
+    port.object_path = "invalid path".into();
+    assert!(!finish_context(&module, &port).await);
+    assert_eq!(cleanup.finishes.load(Ordering::SeqCst), 0);
     Ok(())
 }

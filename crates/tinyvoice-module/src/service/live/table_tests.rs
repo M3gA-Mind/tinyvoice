@@ -310,3 +310,47 @@ async fn output_batches_split_between_atomic_groups_and_reject_a_single_oversize
     );
     sessions.shutdown().await
 }
+
+#[tokio::test(start_paused = true)]
+async fn live_admission_rejects_changed_expired_and_oversized_inputs_before_connecting()
+-> anyhow::Result<()> {
+    use tinyvoice_bus::live::transport::{LiveBindTransportRequest, LiveTransportPort};
+    let bus = tinybus::transport::memory::MemoryBus::new();
+    tinybus::broker::Broker::new().spawn(bus.clone());
+    let connection = tinybus::Connection::connect(bus.connect().await?).await?;
+    let sessions = Sessions::with_connection(&connection);
+    let mut request: LiveStartRequest = serde_json::from_str(include_str!("fixtures/start.json"))?;
+    request.handle = sessions.reserve()?.handle;
+    let mut oversized = request.clone();
+    oversized.configuration.system_instruction = Some("x".repeat(MAX_BATCH_BYTES));
+    assert!(sessions.start(oversized).is_err());
+    assert_eq!(sessions.start(request.clone())?.state, LiveState::Starting);
+    assert_eq!(sessions.start(request.clone())?.state, LiveState::Starting);
+    let mut changed = request.clone();
+    changed.thread_id = "changed".into();
+    assert!(sessions.start(changed).is_err());
+    let bind = LiveBindTransportRequest {
+        handle: request.handle.clone(),
+        port: LiveTransportPort {
+            bus_name: "ai.test.Transport".into(),
+            object_path: "/test/Transport".into(),
+            context_token: "known".into(),
+        },
+    };
+    assert!(sessions.bind_transport(bind.clone()).is_err());
+    sessions.lease(&request.handle)?.cancel();
+    // Cancel before yielding; the scripted connection URL is never opened.
+    assert!(sessions.release(request.handle.clone()).await.is_err());
+    request.handle = sessions.reserve()?.handle;
+    let mut bind = bind;
+    bind.handle = request.handle.clone();
+    bind.port.context_token = "x".repeat(8193);
+    assert!(sessions.bind_transport(bind.clone()).is_err());
+    bind.port.context_token = "known".into();
+    bind.port.object_path = "invalid path".into();
+    assert!(sessions.bind_transport(bind).is_err());
+    tokio::time::advance(std::time::Duration::from_secs(60)).await;
+    assert!(sessions.start(request.clone()).is_err());
+    sessions.release(request.handle).await?;
+    Ok(())
+}
