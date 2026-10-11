@@ -179,3 +179,23 @@ async fn cancelling_release_does_not_detach_the_owned_provider_worker() -> tinyb
     assert!(dropped.load(Ordering::SeqCst));
     Ok(())
 }
+
+#[tokio::test(start_paused = true)]
+async fn cancelling_session_wakes_provider_and_transport_coordinators() -> tinybus::Result<()> {
+    let lease = Arc::new(Lease::new());
+    let mut waiters = tokio::task::JoinSet::new();
+    for _ in 0..2 {
+        let lease = lease.clone();
+        waiters.spawn(async move {
+            lease.wait_cancelled().await;
+        });
+    }
+    tokio::task::yield_now().await;
+    lease.cancel();
+    tokio::time::timeout(std::time::Duration::from_millis(10), async {
+        while waiters.join_next().await.is_some() {}
+    })
+    .await
+    .map_err(|_| unavailable())?;
+    Ok(())
+}
