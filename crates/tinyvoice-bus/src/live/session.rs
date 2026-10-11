@@ -175,7 +175,7 @@ impl std::fmt::Debug for ExecuteLiveToolReply {
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LiveConnection {
-    /// Direct Gemini Live connection.
+    /// Direct `Gemini` Live connection.
     Gemini {
         /// Host-provided API key.
         api_key: String,
@@ -189,7 +189,7 @@ pub enum LiveConnection {
         /// Prepared provider model.
         model: String,
     },
-    /// Prepared ElevenLabs Conversational AI connection.
+    /// Prepared `ElevenLabs` Conversational AI connection.
     ElevenLabs {
         /// Prepared signed websocket URL.
         signed_url: String,
