@@ -1,6 +1,6 @@
 # TinyVoice
 
-Host-agnostic voice primitives, extracted from [OpenHuman](https://github.com/tinyhumansai/openhuman): WAV framing, silence gating, voice-activity segmentation, wake-word gating, fast-path command routing, and STT hallucination detection.
+Host-agnostic voice primitives, extracted from [OpenHuman](https://github.com/tinyhumansai/openhuman): WAV framing, silence gating, voice-activity segmentation, wake-word gating, fast-path command routing, STT hallucination detection, and relay-turn preparation.
 
 Ships two things from one repository:
 
@@ -28,6 +28,7 @@ permission check.
 | VAD segmentation | The capture loop that drives it |
 | Wake-word gate, intent routing | What to *do* with an intent |
 | Hallucination detection | The STT transport, credentials, and retry policy |
+| Relay user-text extraction, readback classification and turn preparation | Local agent execution, product prompts, acknowledgment timing and delivery |
 
 A visible consequence: `VadConfig` has no constructor that reads a config file.
 A host builds one from whatever it persists. A crate that guessed at that shape
@@ -56,6 +57,13 @@ assert_eq!(route(&command), VoiceIntent::Pause);
 ```
 
 Run it: `cargo run -p tinyvoice --example basic`.
+
+`tinyvoice::relay::prepare_turn` extracts user text from serialized messages,
+classifies a host-supplied readback prefix, and prepares a provider-neutral
+turn. It performs no inference or tool execution. A module host uses the
+`PrepareRelayTurn` operation with the minimal `tinyvoice-bus` value types;
+OpenHuman supplies its local agent, acknowledgment policy and delivery.
+See the [relay contract](docs/specs/relay-turn-preparation.md).
 
 ### Optional features
 

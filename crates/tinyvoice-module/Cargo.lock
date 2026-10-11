@@ -1257,6 +1257,7 @@ dependencies = [
  "parking_lot",
  "rdev",
  "serde",
+ "serde_json",
  "thiserror 2.0.20",
  "tinyvoice-bus",
  "tokio",

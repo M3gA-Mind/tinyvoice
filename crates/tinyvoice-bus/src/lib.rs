@@ -17,6 +17,7 @@ pub mod hotkey;
 pub mod intent;
 pub mod names;
 pub mod provider;
+pub mod relay;
 pub mod transcript;
 pub mod vad;
 pub mod version;
