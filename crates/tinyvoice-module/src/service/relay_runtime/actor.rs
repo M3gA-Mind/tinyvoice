@@ -16,6 +16,7 @@ struct Delivery {
     sequence: u64,
     unacknowledged: bool,
     expiry: Option<tokio::time::Instant>,
+    terminal: Option<Vec<RelayEffect>>,
 }
 
 type Incoming = Pin<Box<dyn Future<Output = tinybus::Result<ReadRelayBrainReply>> + Send>>;
@@ -68,12 +69,18 @@ pub(super) async fn run(
         )
         .await;
     }
-    let confirmed = finish_host(&proxy, invocation).await;
+    let confirmed = finish_host(&proxy, invocation.clone()).await;
     finish.request = None;
     if !confirmed && finish.permit.is_some() {
         finish.slots.close();
     }
     finish.permit.take();
+    if let Some(effects) = delivery.terminal.take() {
+        // Native cleanup precedes this bounded final notification. The turn
+        // budget must never be extended while its brain is still executing.
+        delivery.expiry = None;
+        let _ = apply(&proxy, &invocation, &mut delivery, effects).await;
+    }
     if let Ok(mut phase) = lease.phase.lock() {
         phase.state = RelayState::Closed;
         phase.cleanup_confirmed = confirmed;
@@ -104,7 +111,7 @@ async fn coordinate(
             ()=tokio::time::sleep_until(deadline),if !foreground_closed=>{
                 acknowledge(lease,request,proxy,invocation,delivery,streamed).await?;foreground_closed=true;
             },
-            ()=tokio::time::sleep_until(expiry)=>return lose(request,proxy,invocation,delivery,streamed,foreground_closed).await,
+            ()=tokio::time::sleep_until(expiry)=>return lose(request,delivery,streamed,foreground_closed),
         }
     });
 
@@ -168,7 +175,7 @@ async fn coordinate(
             ()=tokio::time::sleep_until(deadline),if !foreground_closed=>{
                 acknowledge(lease,request,proxy,invocation,delivery,streamed).await?;foreground_closed=true;
             },
-            ()=tokio::time::sleep_until(expiry)=>return lose(request,proxy,invocation,delivery,streamed,foreground_closed).await,
+            ()=tokio::time::sleep_until(expiry)=>return lose(request,delivery,streamed,foreground_closed),
         }
     }
 }
@@ -220,10 +227,8 @@ fn lost_effects(streamed: bool, request: &RelayStartRequest) -> Vec<RelayEffect>
     effects.push(RelayEffect::Done);
     effects
 }
-async fn lose(
+fn lose(
     request: &RelayStartRequest,
-    proxy: &tinybus::Proxy,
-    invocation: &RelayInvocationRequest,
     delivery: &mut Delivery,
     streamed: bool,
     foreground_closed: bool,
@@ -235,7 +240,8 @@ async fn lose(
     } else {
         lost_effects(streamed, request)
     };
-    apply(proxy, invocation, delivery, effects).await
+    delivery.terminal = Some(effects);
+    Ok(())
 }
 async fn acknowledge(
     lease: &Lease,

@@ -594,13 +594,22 @@ async fn overall_deadline_finishes_queued_and_active_turns_without_inventing_nat
             brain.entered.notified().await;
         }
         tokio::task::yield_now().await;
-        tokio::time::advance(Duration::from_millis(100)).await;
+        tokio::time::advance(Duration::from_millis(10)).await;
+        let _ = wait_effect(&brain, "expiring").await?;
+        tokio::time::advance(Duration::from_millis(90)).await;
         tokio::time::timeout(Duration::from_secs(1), async {
             loop {
-                if brain.finishes.lock().await.contains(&handle.id) {
+                if brain.finishes.lock().await.contains(&handle.id)
+                    && brain
+                        .effects
+                        .lock()
+                        .await
+                        .get("expiring")
+                        .is_some_and(|effects| effects.len() == 3)
+                {
                     break;
                 }
-                brain.finished.notified().await;
+                tokio::task::yield_now().await;
             }
         })
         .await
@@ -734,5 +743,37 @@ async fn overall_deadline_cancels_stalled_effect_delivery_before_callback_retry_
         }]
     );
     turns.release(handle).await?;
+    Ok(())
+}
+
+#[tokio::test(start_paused = true)]
+async fn unconfirmed_native_cleanup_closes_slots_instead_of_starting_queued_work()
+-> tinybus::Result<()> {
+    let brain = Brain {
+        hold_finish: true,
+        ..Brain::default()
+    };
+    brain.events.lock().await.insert(
+        "first".into(),
+        VecDeque::from([RelayBrainEvent::Complete {
+            outcome: RelayOutcome::Success {
+                text: "answer".into(),
+            },
+        }]),
+    );
+    let (turns, _module, _host) = fixture(brain.clone(), 1).await?;
+    let first = turns.reserve()?.handle;
+    start(&turns, &brain, request(first.clone(), "first", 1000)).await?;
+    brain.finish_entered.notified().await;
+    let second = turns.reserve()?.handle;
+    start(&turns, &brain, request(second.clone(), "second", 1000)).await?;
+    tokio::time::advance(Duration::from_secs(2)).await;
+    for _ in 0..50 {
+        tokio::task::yield_now().await;
+    }
+    assert!(!brain.invocations.lock().await.contains_key("second"));
+    assert!(brain.finishes.lock().await.is_empty());
+    assert!(turns.release(first).await.is_err());
+    let _ = turns.release(second).await;
     Ok(())
 }
