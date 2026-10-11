@@ -1072,3 +1072,15 @@ async fn live_first_frame_parsing_preserves_default_rate_and_host_metadata() {
     assert_eq!(reply["thread_id"], "thread");
     assert_eq!(reply["client_id"], "client");
 }
+
+#[tokio::test]
+async fn live_reservations_exist_before_provider_startup_and_can_be_released() {
+    let proxy = connect().await.unwrap();
+    let reserved: serde_json::Value = proxy.call("LiveReserve", ()).await.unwrap();
+    assert_eq!(reserved["state"], "reserved");
+    assert_eq!(reserved["handle"]["id"].as_str().unwrap().len(), 32);
+    let released: serde_json::Value = proxy.call("LiveRelease", serde_json::json!({
+        "handle": reserved["handle"],
+    })).await.unwrap();
+    assert_eq!(released["state"], "closed");
+}
