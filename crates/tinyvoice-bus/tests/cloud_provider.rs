@@ -157,3 +157,22 @@ fn provider_values_preserve_audio_hints_and_session_metadata() -> Result<(), ser
     );
     Ok(())
 }
+
+#[test]
+fn realtime_debug_does_not_expose_connection_credentials() {
+    let voice = RealtimeSession::VoiceAgent {
+        signed_url: "wss://voice.invalid/?ticket=secret-ticket".into(),
+        agent_id: "agent".into(),
+        user_token: "secret-user-token".into(),
+    };
+    let gemini = RealtimeSession::GeminiLive {
+        ws_url: "wss://voice.invalid/?ticket=secret-relay-ticket".into(),
+        session_id: "session".into(),
+        model: "gemini".into(),
+    };
+    for session in [voice, gemini] {
+        let debug = format!("{session:?}");
+        assert!(!debug.contains("secret"), "credentials exposed: {debug}");
+        assert!(debug.contains("[REDACTED]"));
+    }
+}
