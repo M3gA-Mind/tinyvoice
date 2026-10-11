@@ -89,7 +89,8 @@ impl Turns {
     pub(in crate::service) fn with_connection(connection: &tinybus::Connection) -> Self {
         Self {
             connection: Some(connection.downgrade()),
-            ..Self::default()
+            closed: AtomicBool::new(false),
+            state: Mutex::new(State::default()),
         }
     }
     pub(in crate::service) fn configure(

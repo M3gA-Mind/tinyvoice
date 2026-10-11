@@ -295,3 +295,7 @@ impl Drop for FinishGuard {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "actor_tests.rs"]
+mod tests;
