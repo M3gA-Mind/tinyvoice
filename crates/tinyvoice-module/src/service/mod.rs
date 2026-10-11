@@ -4,6 +4,8 @@
 #[path = "mod_tests.rs"]
 mod test;
 
+mod relay;
+
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use tinybus::{Connection, Result as TinyBusResult};
@@ -190,7 +192,7 @@ impl VoiceService {
         &self,
         request: tinyvoice_bus::relay::RelayTurnRequest,
     ) -> TinyBusResult<tinyvoice_bus::relay::PreparedRelayTurn> {
-        Ok(tinyvoice::relay::prepare_turn(&request))
+        relay::prepare(&request)
     }
     /// Enumerate devices inside the module without opening a recording.
     async fn list_input_devices(

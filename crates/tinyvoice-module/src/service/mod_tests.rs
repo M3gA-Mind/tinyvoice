@@ -1029,6 +1029,33 @@ async fn relay_rejects_aggregate_text_before_amplifying_a_reply() {
         messages: vec![serde_json::json!({"role":"user","content":"x".repeat(8 * 1024 * 1024)})],
         readback_prefix: String::new(),
     };
-    let result = super::VoiceService::default().prepare_relay_turn(request).await;
-    assert!(result.is_err(), "an accepted single-frame request must not amplify into an oversized reply");
+    let result = super::VoiceService::default()
+        .prepare_relay_turn(request)
+        .await;
+    assert!(
+        result.is_err(),
+        "an accepted single-frame request must not amplify into an oversized reply"
+    );
+}
+
+#[tokio::test]
+async fn oversized_relay_request_returns_an_error_without_breaking_the_bus() {
+    let proxy = connect().await.unwrap();
+    let request = tinyvoice_bus::relay::RelayTurnRequest {
+        messages: vec![serde_json::json!({"role":"user","content":"x".repeat(8 * 1024 * 1024)})],
+        readback_prefix: String::new(),
+    };
+    let rejected: tinybus::Result<serde_json::Value> =
+        proxy.call("PrepareRelayTurn", &request).await;
+    assert!(rejected.is_err());
+    let reply: serde_json::Value = proxy
+        .call(
+            "PrepareRelayTurn",
+            serde_json::json!({
+                "messages":[{"role":"user","content":"hello"}], "readback_prefix":"Read:"
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reply["prompt"], "hello");
 }
