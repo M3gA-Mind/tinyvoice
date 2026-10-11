@@ -54,6 +54,31 @@ struct StreamLease {
     busy: BusyGuard,
 }
 #[derive(Debug)]
+struct Finishing {
+    canceled: AtomicBool,
+    completed: tokio::sync::watch::Sender<bool>,
+}
+#[derive(Debug)]
+struct FinishGuard {
+    handle: CaptureHandle,
+    finishing: Arc<Mutex<HashMap<CaptureHandle, Arc<Finishing>>>>,
+    receipt: Arc<Finishing>,
+    busy: Option<BusyGuard>,
+}
+impl Drop for FinishGuard {
+    fn drop(&mut self) {
+        // Keep receipt lookup serialized until the native ownership is released.
+        let mut finishing = self
+            .finishing
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        drop(self.busy.take());
+        self.receipt.completed.send_replace(true);
+        finishing.remove(&self.handle);
+    }
+}
+
+#[derive(Debug)]
 struct PreparedOutput {
     wav: Vec<u8>,
     summary: RecordingSummary,
@@ -81,7 +106,7 @@ pub(super) struct Capture {
     closed: AtomicBool,
     recordings: Mutex<HashMap<CaptureHandle, Lease>>,
     outputs: Arc<Mutex<HashMap<CaptureHandle, PreparedOutput>>>,
-    finishing: Arc<Mutex<HashMap<CaptureHandle, Arc<AtomicBool>>>>,
+    finishing: Arc<Mutex<HashMap<CaptureHandle, Arc<Finishing>>>>,
     reservations: Mutex<HashMap<CaptureHandle, Reservation>>,
     streams: Mutex<HashMap<CaptureHandle, StreamLease>>,
 }
@@ -130,7 +155,7 @@ impl Capture {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             for canceled in finishing.values() {
-                canceled.store(true, Ordering::SeqCst);
+                canceled.canceled.store(true, Ordering::SeqCst);
             }
             self.outputs
                 .lock()
@@ -220,7 +245,10 @@ impl Capture {
                 return Err(CaptureError::InvalidParameters);
             }
             let Lease { recording, busy } = self.take(&request.handle)?;
-            let canceled = Arc::new(AtomicBool::new(false));
+            let canceled = Arc::new(Finishing {
+                canceled: AtomicBool::new(false),
+                completed: tokio::sync::watch::channel(false).0,
+            });
             finishing.insert(request.handle.clone(), canceled.clone());
             (recording, busy, canceled)
         };
@@ -228,15 +256,22 @@ impl Capture {
         let outputs = self.outputs.clone();
         let finishing = self.finishing.clone();
         let runtime = tokio::runtime::Handle::current();
+        let guard = FinishGuard {
+            handle: request.handle.clone(),
+            finishing: finishing.clone(),
+            receipt: canceled.clone(),
+            busy: Some(busy),
+        };
         tokio::task::spawn_blocking(move || {
-            let result = (|| {
+            let _guard = guard;
+            (|| {
                 let raw = runtime
                     .block_on(recording.finish())
                     .map_err(CaptureError::Device)?;
                 let wav = backend.prepare(&raw, request.gate_threshold)?;
                 let summary = summarize(&raw, &wav)?;
                 let _finish_lock = finishing.lock().map_err(|_| state_error())?;
-                if canceled.load(Ordering::SeqCst) {
+                if canceled.canceled.load(Ordering::SeqCst) {
                     return Err(CaptureError::Cancelled);
                 }
                 let mut outputs = outputs.lock().map_err(|_| state_error())?;
@@ -252,12 +287,7 @@ impl Capture {
                     handle: request.handle.clone(),
                     length,
                 })
-            })();
-            if let Ok(mut finishing) = finishing.lock() {
-                finishing.remove(&request.handle);
-            }
-            drop(busy);
-            result
+            })()
         })
         .await
         .map_err(|_| state_error())?
@@ -266,7 +296,27 @@ impl Capture {
         let was_pending = self.cancel_pending(handle).await?;
         let lease = match self.take(handle) {
             Ok(lease) => lease,
-            Err(CaptureError::UnknownHandle) if was_pending => return Ok(()),
+            Err(CaptureError::UnknownHandle) => {
+                let receipt = self
+                    .finishing
+                    .lock()
+                    .map_err(|_| state_error())?
+                    .get(handle)
+                    .cloned();
+                if let Some(receipt) = receipt {
+                    receipt.canceled.store(true, Ordering::SeqCst);
+                    let mut completed = receipt.completed.subscribe();
+                    while !*completed.borrow_and_update() {
+                        completed.changed().await.map_err(|_| state_error())?;
+                    }
+                    return Ok(());
+                }
+                return if was_pending {
+                    Ok(())
+                } else {
+                    Err(CaptureError::UnknownHandle)
+                };
+            }
             Err(error) => return Err(error),
         };
         let runtime = tokio::runtime::Handle::current();
@@ -375,7 +425,7 @@ impl Capture {
     pub(super) fn release(&self, handle: &CaptureHandle) -> CaptureResult<()> {
         let finishing = self.finishing.lock().map_err(|_| state_error())?;
         if let Some(canceled) = finishing.get(handle) {
-            canceled.store(true, Ordering::SeqCst);
+            canceled.canceled.store(true, Ordering::SeqCst);
             self.outputs
                 .lock()
                 .map_err(|_| state_error())?

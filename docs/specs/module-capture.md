@@ -42,7 +42,10 @@ marks the known reservation and waits for native setup and cleanup. Startup
 workers reclaim resources if their result receiver disappears. Finish consumes it and waits for capture to stop before
 downmixing, resampling to 16 kHz, optional silence gating and PCM16 WAV encoding.
 Cancel consumes the recording and waits for device shutdown, discarding its
-audio and capture errors. Invalid gate thresholds retain the lease so it can
+audio and capture errors. If finish already consumed the recording, cancel marks
+that finishing lease canceled and awaits its own completion receipt before
+acknowledging native cleanup. Losing the finish or cancel reply does not release
+capacity early, and a receipt never waits for a later recording. Invalid gate thresholds retain the lease so it can
 be canceled. Setup, processing and storage failures release device capacity.
 Native startup, finish, cancel and stop run in owned blocking workers. Dropping a
 request future does not release its BusyGuard while cleanup/preparation is pending.
