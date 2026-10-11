@@ -1,8 +1,6 @@
 //! Real loaded-module duplex, tool-authority and cleanup verification.
 
 use futures_util::{SinkExt, StreamExt};
-use futures_util::{SinkExt, StreamExt};
-use serde_json::{Value, json};
 use serde_json::{Value, json};
 use std::io;
 use std::sync::Arc;

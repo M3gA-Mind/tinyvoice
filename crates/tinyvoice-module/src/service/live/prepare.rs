@@ -118,3 +118,7 @@ fn configuration(config: &LiveConfiguration) -> LiveConfig {
         provider_options: config.provider_options.clone(),
     }
 }
+
+#[cfg(test)]
+#[path = "prepare_tests.rs"]
+mod tests;
