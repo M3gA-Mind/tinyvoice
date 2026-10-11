@@ -2,10 +2,10 @@
 
 Specification: [host-supplied cloud voice transport](../specs/cloud-provider.md).
 
-1. Add transport-free request and response DTOs to tinyvoice-bus; use opaque JSON
+1. Add transport-free request and response DTOs in tinyvoice-bus provider/types.rs; use opaque JSON
    for speech so existing response normalization keeps its owner.
 2. Add object-safe provider futures and methods; distinguish failure categories
-   independently of safe display text.
+   in the crate-wide Error enum independently of safe display text, using Result<T>.
 3. Exercise every operation with a fake provider, round-trip optional metadata,
    and confirm debug formatting conceals connection credentials.
 4. Document the composition seam and verify the bus and existing compiled module

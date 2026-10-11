@@ -10,7 +10,9 @@ The trait returns boxed `Send` futures using the standard library. Hosts choose
 their runtime and install providers through their own composition mechanism.
 Transcription and session replies use typed DTOs. Speech synthesis preserves the
 provider’s JSON response so a host can retain its established tolerant alignment
-and viseme normalization. Provider errors carry a stable category separately from safe display text. Hosts
+and viseme normalization. The crate-wide `Error` enum in `src/error/mod.rs` carries stable variants
+separately from safe display text; `ProviderFuture` returns the crate `Result<T>`.
+Request and response DTOs live in `types.rs`; the crate root exports the contract. Hosts
 can distinguish unavailable providers, invalid inputs, expired sessions, rejected
 API keys, transport failures and invalid responses without parsing messages.
 Realtime result debug output redacts signed connection URLs and user tokens;

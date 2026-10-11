@@ -8,7 +8,8 @@ The additive `tinyvoice-bus::provider` contract accepts encoded audio and option
 transcription hints, reply text and optional speech hints, or a typed session
 bootstrap request. It returns transcription text, an opaque speech response, or
 short-lived connection facts. Object-safe futures use the standard library;
-errors preserve typed categories independently of display text. Debug output
+the crate-wide `Error` variants preserve typed categories independently of display
+text, and futures return the crate `Result<T>` alias. Debug output
 redacts realtime connection credentials while serialization retains them. No persistent credential or backend base
 URL appears in the input types.
 

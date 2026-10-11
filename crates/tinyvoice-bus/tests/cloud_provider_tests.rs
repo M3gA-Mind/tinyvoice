@@ -1,9 +1,9 @@
 //! A host can supply cloud transport through the minimal provider contract.
 
 use std::task::{Context, Poll, Waker};
-use tinyvoice_bus::provider::{
-    CloudVoiceProvider, ProviderError, ProviderErrorKind, ProviderFuture, RealtimeRequest,
-    RealtimeSession, SynthesisRequest, Transcription, TranscriptionRequest,
+use tinyvoice_bus::{
+    CloudVoiceProvider, Error, ProviderFuture, RealtimeRequest, RealtimeSession, SynthesisRequest,
+    Transcription, TranscriptionRequest,
 };
 
 #[derive(Debug)]
@@ -12,8 +12,7 @@ struct HostProvider;
 impl CloudVoiceProvider for HostProvider {
     fn transcribe(&self, request: TranscriptionRequest) -> ProviderFuture<'_, Transcription> {
         Box::pin(std::future::ready(if request.audio_base64.is_empty() {
-            Err(ProviderError {
-                kind: ProviderErrorKind::InvalidInput,
+            Err(Error::InvalidInput {
                 message: "audio is required".into(),
             })
         } else {
@@ -55,8 +54,7 @@ fn a_host_provider_dispatches_without_voice_implementation_or_runtime() {
             .transcribe(request.clone())
             .as_mut()
             .poll(&mut context),
-        Poll::Ready(Err(ProviderError {
-            kind: ProviderErrorKind::InvalidInput,
+        Poll::Ready(Err(Error::InvalidInput {
             message: "audio is required".into()
         }))
     );
@@ -186,21 +184,54 @@ fn realtime_debug_does_not_expose_connection_credentials() {
 #[test]
 fn provider_errors_preserve_categories_independently_of_display_text()
 -> Result<(), serde_json::Error> {
-    use tinyvoice_bus::provider::{ProviderError, ProviderErrorKind};
-    for kind in [
-        ProviderErrorKind::InvalidInput,
-        ProviderErrorKind::Unavailable,
-        ProviderErrorKind::SessionExpired,
-        ProviderErrorKind::ApiKeyRejected,
-        ProviderErrorKind::Transport,
-        ProviderErrorKind::InvalidResponse,
+    for (error, kind) in [
+        (
+            Error::InvalidInput {
+                message: "same human-readable detail".into(),
+            },
+            "invalid_input",
+        ),
+        (
+            Error::Unavailable {
+                message: "same human-readable detail".into(),
+            },
+            "unavailable",
+        ),
+        (
+            Error::SessionExpired {
+                message: "same human-readable detail".into(),
+            },
+            "session_expired",
+        ),
+        (
+            Error::ApiKeyRejected {
+                message: "same human-readable detail".into(),
+            },
+            "api_key_rejected",
+        ),
+        (
+            Error::Transport {
+                message: "same human-readable detail".into(),
+            },
+            "transport",
+        ),
+        (
+            Error::InvalidResponse {
+                message: "same human-readable detail".into(),
+            },
+            "invalid_response",
+        ),
     ] {
-        let error = ProviderError {
-            kind,
-            message: "same human-readable detail".into(),
-        };
-        let decoded: ProviderError = serde_json::from_value(serde_json::to_value(&error)?)?;
-        assert_eq!(decoded.kind, kind);
+        let encoded = serde_json::to_value(&error)?;
+        assert_eq!(
+            encoded,
+            serde_json::json!({
+                "kind": kind,
+                "message": "same human-readable detail",
+            })
+        );
+        let decoded: Error = serde_json::from_value(encoded)?;
+        assert_eq!(decoded, error);
         assert_eq!(decoded.to_string(), "same human-readable detail");
     }
     Ok(())
