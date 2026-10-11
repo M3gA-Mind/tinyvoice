@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// The prepared reply can retain text in the prompt, history and readback.
 /// A four MiB aggregate input limit leaves room for those copies and the bus
-/// envelope within TinyBus's sixteen MiB frame limit.
+/// envelope within `TinyBus`'s sixteen MiB frame limit.
 pub const MAX_RELAY_REQUEST_BYTES: usize = 4 * 1024 * 1024;
 
 /// Messages and host policy used to prepare one relayed turn.
