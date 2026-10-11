@@ -54,8 +54,7 @@ async fn fixture() -> tinybus::Result<(CallbackTool, Authority, tinybus::Connect
     Broker::new().spawn(bus.clone());
     let authority = Authority::default();
     let host = tinybus::Connection::connect(bus.connect().await?).await?;
-    host.object_server()
-        .serve_at("/test/LiveTools".try_into()?, authority.clone())
+    host.serve_at("/test/LiveTools".try_into()?, authority.clone())
         .await?;
     host.request_name("ai.test.LiveTools").await?;
     let module = tinybus::Connection::connect(bus.connect().await?).await?;

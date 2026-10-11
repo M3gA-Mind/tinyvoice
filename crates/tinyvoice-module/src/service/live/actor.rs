@@ -163,3 +163,7 @@ async fn finish_context(connection: &tinybus::Connection, request: &LiveStartReq
     );
     matches!(tokio::time::timeout(FINISH_TIMEOUT, call).await, Ok(Ok(reply)) if reply.finished)
 }
+
+#[cfg(test)]
+#[path = "actor_tests.rs"]
+mod tests;
