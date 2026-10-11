@@ -344,3 +344,7 @@ impl Drop for Turns {
 fn unavailable() -> tinybus::Error {
     tinybus::Error::failed("relay state is unavailable")
 }
+
+#[cfg(test)]
+#[path = "table_tests.rs"]
+mod tests;

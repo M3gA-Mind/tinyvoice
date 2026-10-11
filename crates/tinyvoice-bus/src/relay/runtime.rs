@@ -177,9 +177,9 @@ pub enum RelayEffect {
     },
     /// End the foreground spoken turn after all preceding deltas.
     Done,
-    /// Report a foreground native failure.
+    /// Report a foreground native or coordination failure.
     Error {
-        /// Actual native error.
+        /// Actual native error or a bounded generic coordination error.
         message: String,
     },
     /// Native completion after the foreground deadline.

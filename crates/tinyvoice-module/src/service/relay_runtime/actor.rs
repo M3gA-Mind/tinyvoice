@@ -50,7 +50,12 @@ pub(super) async fn run(
             &proxy,
             &invocation,
             &mut delivery,
-            vec![RelayEffect::LostBrain],
+            vec![
+                RelayEffect::LostBrain,
+                RelayEffect::Error {
+                    message: "relay coordination failed".into(),
+                },
+            ],
         )
         .await;
     }

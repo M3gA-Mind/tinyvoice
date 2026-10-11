@@ -48,7 +48,8 @@ impl Brain {
         self.entered.notify_one();
         if self.hold_start {
             self.admission_cancel.notified().await;
-            self.admission_stopped.store(true, std::sync::atomic::Ordering::SeqCst);
+            self.admission_stopped
+                .store(true, std::sync::atomic::Ordering::SeqCst);
             self.admission_exited.notify_one();
             return Err(tinybus::Error::failed("fixture native admission cancelled"));
         }
@@ -133,7 +134,11 @@ impl Brain {
         if self.hold_finish {
             std::future::pending::<()>().await;
         }
-        if self.hold_start && !self.admission_stopped.load(std::sync::atomic::Ordering::SeqCst) {
+        if self.hold_start
+            && !self
+                .admission_stopped
+                .load(std::sync::atomic::Ordering::SeqCst)
+        {
             self.admission_cancel.notify_one();
             self.admission_exited.notified().await;
         }
@@ -223,7 +228,11 @@ async fn acknowledgment_deadline_remains_live_while_the_host_start_callback_is_p
         ]
     );
     turns.release(handle).await?;
-    assert!(brain.admission_stopped.load(std::sync::atomic::Ordering::SeqCst));
+    assert!(
+        brain
+            .admission_stopped
+            .load(std::sync::atomic::Ordering::SeqCst)
+    );
     Ok(())
 }
 
@@ -457,7 +466,11 @@ async fn unknown_or_currently_revoked_native_authority_never_starts_an_executor(
         .await
         .map_err(|_| tinybus::Error::failed("fixture finish deadline"))?;
     assert!(brain.invocations.lock().await.is_empty());
-    assert!(brain.effects.lock().await["revoked"].iter().any(|effect| matches!(effect, RelayEffect::Error { .. })));
+    assert!(
+        brain.effects.lock().await["revoked"]
+            .iter()
+            .any(|effect| matches!(effect, RelayEffect::Error { .. }))
+    );
     assert!(
         !brain.effects.lock().await["revoked"]
             .iter()
