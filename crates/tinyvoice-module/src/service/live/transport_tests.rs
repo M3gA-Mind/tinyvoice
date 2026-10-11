@@ -8,7 +8,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 use tinybus::{broker::Broker, transport::memory::MemoryBus};
-use tinyvoice_bus::live::{ServerFrame,TransportFrame, transport::LiveBindTransportRequest};
+use tinyvoice_bus::live::{ServerFrame, TransportFrame, transport::LiveBindTransportRequest};
 
 #[derive(Clone, Default)]
 struct Socket {
