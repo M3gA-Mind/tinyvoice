@@ -10,8 +10,11 @@ The trait returns boxed `Send` futures using the standard library. Hosts choose
 their runtime and install providers through their own composition mechanism.
 Transcription and session replies use typed DTOs. Speech synthesis preserves the
 provider’s JSON response so a host can retain its established tolerant alignment
-and viseme normalization. Provider errors pass through unchanged, including any
-host authentication-expiry markers.
+and viseme normalization. Provider errors carry a stable category separately from safe display text. Hosts
+can distinguish unavailable providers, invalid inputs, expired sessions, rejected
+API keys, transport failures and invalid responses without parsing messages.
+Realtime result debug output redacts signed connection URLs and user tokens;
+serialization preserves the credentials needed to connect.
 
 This interface does not add TinyBus methods or raise the native wire contract
 version. It does not implement capture, VAD, hotkeys, playback, provider websocket
