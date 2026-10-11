@@ -152,3 +152,28 @@ async fn dropping_module_aborts_owned_workers_without_waiting_for_host_cleanup()
     assert!(dropped.load(Ordering::SeqCst));
     Ok(())
 }
+
+#[tokio::test(start_paused = true)]
+async fn cancelling_release_does_not_detach_the_owned_provider_worker() -> tinybus::Result<()> {
+    let sessions = Arc::new(Sessions::default());
+    let handle = sessions.reserve()?.handle;
+    let lease = sessions.lease(&handle)?;
+    let dropped = Arc::new(AtomicBool::new(false));
+    blocked_task(&lease, dropped.clone())?;
+    tokio::task::yield_now().await;
+    let releasing = tokio::spawn(async move { sessions.release(handle).await });
+    tokio::task::yield_now().await;
+    assert!(
+        lease
+            .phase
+            .lock()
+            .map_err(|_| unavailable())?
+            .task
+            .is_none()
+    );
+    releasing.abort();
+    let _ = releasing.await;
+    tokio::task::yield_now().await;
+    assert!(dropped.load(Ordering::SeqCst));
+    Ok(())
+}
