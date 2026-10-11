@@ -337,6 +337,23 @@ fn module_argument() -> Result<PathBuf, io::Error> {
 }
 
 async fn verify_relay_turn(proxy: &tinybus::Proxy) -> Result<(), Box<dyn std::error::Error>> {
+    let rejected: tinybus::Result<tinyvoice_bus::relay::PreparedRelayTurn> = proxy
+        .call(
+            tinyvoice_bus::names::methods::PREPARE_RELAY_TURN,
+            (tinyvoice_bus::relay::RelayTurnRequest {
+                messages: vec![serde_json::json!({
+                    "role": "user", "content": "x".repeat(8 * 1024 * 1024)
+                })],
+                readback_prefix: String::new(),
+            },),
+        )
+        .await;
+    if rejected.is_ok() {
+        return Err(
+            io::Error::other("module accepted an amplifying oversized relay request").into(),
+        );
+    }
+
     let prepared: tinyvoice_bus::relay::PreparedRelayTurn = proxy
         .call(
             tinyvoice_bus::names::methods::PREPARE_RELAY_TURN,
