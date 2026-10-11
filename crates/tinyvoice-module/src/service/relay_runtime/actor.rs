@@ -128,7 +128,7 @@ async fn coordinate(
                 acknowledge(lease, request, proxy, invocation, delivery, streamed).await?;
                 foreground_closed = true;
             },
-            () = tokio::time::sleep_until(expiry) => return lose(request, proxy, invocation, delivery, streamed, foreground_closed).await,
+            () = tokio::time::sleep_until(expiry) => return lose(request, delivery, streamed, foreground_closed),
         }
     };
     if !started.started {
