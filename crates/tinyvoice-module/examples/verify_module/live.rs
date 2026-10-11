@@ -269,6 +269,7 @@ struct ClientTransport {
     committed: Arc<Mutex<std::collections::HashSet<String>>>,
     closed: Arc<tokio::sync::Notify>,
     attempts: Arc<Mutex<usize>>,
+    closes: Arc<Mutex<usize>>,
 }
 
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.LiveTransport")]
@@ -311,6 +312,7 @@ impl ClientTransport {
         &self,
         _request: CloseLiveTransportRequest,
     ) -> tinybus::Result<CloseLiveTransportReply> {
+        *self.closes.lock().await += 1;
         self.closed.notify_one();
         Ok(CloseLiveTransportReply { closed: true })
     }
@@ -358,6 +360,9 @@ async fn verify_bound_transport(
     )
     .await?;
     provider.await??;
+    if *transport.closes.lock().await != 1 {
+        return Err(io::Error::other("socket was not closed once").into());
+    }
     let outputs = transport.outputs.lock().await;
     check_outputs(&outputs, host).await?;
     if outputs.iter().filter(|effect| matches!(effect, LiveOutput::Persist { role: TranscriptRole::User, text } if text == "hello")).count() != 1 {

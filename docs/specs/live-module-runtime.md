@@ -29,9 +29,7 @@ tasks. Audio and serialized control requests have bounded sizes. Event reads
 return ordered bounded batches with replay until acknowledgment, so a lost
 reply does not erase transcript or terminal events. Stop asks the provider to
 close and retains its terminal events; explicit release drops the session and
-its tasks. Shutdown closes admission, cancels every native task and joins cleanups concurrently under one two-second deadline. Dropping a release/shutdown future aborts the worker rather than detaching its task. Module drop also aborts owned workers. A disconnected client must
-explicitly release its handle; capacity limits prevent leaked clients from
-growing the table indefinitely.
+its tasks. Shutdown closes admission, cancels every native task and joins cleanups concurrently under one two-second deadline. Dropping a release/shutdown future aborts the worker rather than detaching its task. Module drop also aborts owned workers. A bound transport coordinator closes its provider on client EOF, input/write failure or cancellation. A host using the manual input/effect API must explicitly release its handle on disconnect. Capacity limits and reservation expiry prevent forgotten reservations from growing the table indefinitely.
 
 The realtime relay's local brain, progress selection, correlation admission,
 spoken acknowledgment deadline and delivery policy remain host choices.
@@ -49,8 +47,7 @@ waits for accepted source and an available released module.
 
 ## Admission and transport bounds
 
-Contract 1.7 adds PrepareLiveInput, LiveReserve, LiveStart, LiveSend, LiveRead,
-LiveRelease and LiveShutdown. Reserve precedes provider connection; identical
+Contract 1.7 adds PrepareLiveInput, LiveReserve, LiveBindTransport, LiveStart, LiveSend, LiveRead, LiveRelease and LiveShutdown. Reserve precedes provider connection; identical
 start retries preserve the same lease and a changed start request fails.
 Sixteen leases are admitted. Unstarted reservations expire after sixty seconds;
 active sessions are never evicted to admit another client. Startup requests
@@ -87,3 +84,16 @@ leases on endpoint/context teardown as well. Remote notification is bounded
 best effort; native provider termination does not depend on receiving it.
 
 The runtime requires the non-owning connection capability proposed in TinyBus [PR #50](https://github.com/tinyhumansai/tinybus/pull/50). Served module objects store `WeakConnection`; active work upgrades it temporarily. OpenHuman adoption must wait for the prerequisite and a released, admitted TinyVoice artifact.
+
+
+## Mechanical socket callbacks
+
+Bind a LiveTransport endpoint to a reserved handle before LiveStart. The module then owns client polling, native provider input, event batching, delivery retries and terminal cleanup. A bound lease rejects manual LiveSend/LiveRead to prevent competing readers and duplicate persistence. Identical bindings retry safely; changed ports or binding after start fail.
+
+ReadLiveInput receives the last acknowledged frame sequence. The host retains its next frame until that exact sequence is acknowledged; idle polls return no frame and retain the acknowledgment. The module accepts only contiguous sequences, parses portable controls and ignores malformed later controls as the existing wire protocol does. Socket callbacks return idle promptly; a read exceeding one second closes the module coordinator. Audio and typed text are bounded before native dispatch.
+
+DeliverLiveEffects carries an ordered group and a stable delivery ID (`input-N` or `output-N`) scoped to the random module handle. The host applies effects mechanically and remembers committed identities so a lost reply can retry without repeating persistence. The module retries twice under a one-second deadline per attempt. Typed input persistence precedes native text dispatch; final provider transcript frames precede their persistence projection. A failed delivery stops the coordinator.
+
+Client EOF, callback error, native closure and cancellation stop provider work and invoke CloseLiveTransport under a one-second deadline. This method closes only a saved known transport context; repeated known close succeeds and an unknown context returns false. Module release does not invent a successful cleanup acknowledgment. The host owns context leases and must also cancel independent callback tasks when their endpoint drops; TinyBus call timeout alone does not cancel work already running remotely.
+
+The module retains only a weak reference to its serving connection. Active actors borrow owning handles temporarily; dropping the module aborts its provider and transport workers. Cancellation destructors retain their original runtime handle so dropping a callback future outside a runtime enter context cannot panic.

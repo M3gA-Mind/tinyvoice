@@ -15,6 +15,7 @@ struct Socket {
     committed: Arc<Mutex<HashSet<String>>>,
     effects: Arc<Mutex<Vec<LiveOutput>>>,
     attempts: Arc<AtomicUsize>,
+    polls: Arc<tokio::sync::Mutex<usize>>,
     closes: Arc<AtomicUsize>,
     closed: Arc<tokio::sync::Notify>,
     first_reply_lost: bool,
@@ -28,6 +29,7 @@ impl Socket {
         &self,
         request: ReadLiveInputRequest,
     ) -> tinybus::Result<ReadLiveInputReply> {
+        *self.polls.lock().await += 1;
         Ok(ReadLiveInputReply {
             sequence: request.acknowledged_frame + if self.invalid_sequence { 2 } else { 1 },
             frame: Some(TransportFrame::Closed),
