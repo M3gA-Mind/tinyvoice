@@ -21,7 +21,7 @@ fn relay_callbacks_preserve_reserved_authority_and_ordered_effects_without_debug
         },
         port: port.clone(),
         acknowledgment_deadline_ms: 8000,
-        turn_timeout_ms: 120000,
+        turn_timeout_ms: 120_000,
         empty_reply_text: "private-pause".into(),
         deadline_reply_text: "private-ack".into(),
         lost_reply_text: "private-lost".into(),
