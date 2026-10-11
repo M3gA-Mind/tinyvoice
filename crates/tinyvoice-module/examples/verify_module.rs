@@ -18,6 +18,9 @@ use tinyvoice_bus::{BUS_NAME, OBJECT_PATH};
 #[path = "verify_module/live.rs"]
 mod live;
 
+#[path = "verify_module/relay_runtime.rs"]
+mod relay_runtime;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let module = module_argument()?;
@@ -73,6 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     verify_relay_turn(&proxy).await?;
     verify_live_input(&proxy).await?;
     live::verify_runtime(&proxy, &client).await?;
+    relay_runtime::verify(&proxy, &client).await?;
     verify_recording_summary(&proxy).await?;
     // Default-denied permission must reject before any native device is opened.
     let denied: tinyvoice_bus::capture::CaptureResult<tinyvoice_bus::capture::CaptureHandle> =
