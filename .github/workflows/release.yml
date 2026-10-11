@@ -11,6 +11,7 @@ on:
           - patch
           - minor
           - major
+          - current
 
 concurrency:
   group: release-${{ github.ref_name }}
@@ -94,6 +95,9 @@ jobs:
 
           IFS=. read -r major minor patch <<< "$current_version"
           case "${{ inputs.bump }}" in
+            current)
+              next_version="$current_version"
+              ;;
             major)
               major=$((major + 1))
               minor=0
@@ -112,12 +116,33 @@ jobs:
               ;;
           esac
 
-          next_version="${major}.${minor}.${patch}"
+          if [[ "${{ inputs.bump }}" != "current" ]]; then
+            next_version="${major}.${minor}.${patch}"
+          fi
           tag="v${next_version}"
 
           git fetch --tags origin
           if git rev-parse --verify --quiet "refs/tags/${tag}"; then
-            echo "Tag ${tag} already exists" >&2
+            if [[ "${{ inputs.bump }}" != "current" ]]; then
+              echo "Tag ${tag} already exists" >&2
+              exit 1
+            fi
+            tagged_version="$(
+              git show "${tag}:crates/tinyvoice/Cargo.toml" \
+                | sed -n 's/^version = "\([^"]*\)"$/\1/p' \
+                | head -n 1
+            )"
+            module_version="$(
+              sed -n 's/^version = "\([^"]*\)"$/\1/p' \
+                crates/tinyvoice-module/Cargo.toml \
+                | head -n 1
+            )"
+            if [[ "$tagged_version" != "$current_version" || "$module_version" != "$current_version" ]]; then
+              echo "Tag ${tag} and module manifest must both match ${current_version}" >&2
+              exit 1
+            fi
+          elif [[ "${{ inputs.bump }}" == "current" ]]; then
+            echo "Cannot resume ${tag}: tag does not exist" >&2
             exit 1
           fi
 
@@ -130,6 +155,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Update crate version
+        if: ${{ inputs.bump != 'current' }}
         env:
           CRATE_NAME: ${{ steps.version.outputs.crate_name }}
           NEXT_VERSION: ${{ steps.version.outputs.next_version }}
@@ -153,6 +179,7 @@ jobs:
             -p tinyvoice-module --precise "$NEXT_VERSION"
 
       - name: Commit version bump and tag
+        if: ${{ inputs.bump != 'current' }}
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
@@ -199,6 +226,7 @@ jobs:
           if-no-files-found: error
 
       - name: Push release commit and tag
+        if: ${{ inputs.bump != 'current' }}
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
