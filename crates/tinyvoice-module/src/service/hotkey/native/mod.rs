@@ -19,6 +19,7 @@ pub(super) trait Backend: std::fmt::Debug + Send + Sync {
 }
 
 impl NativeListener {
+    #[cfg(any(test, target_os = "linux", target_os = "windows"))]
     pub(super) fn new(
         events: mpsc::Receiver<bool>,
         overflow: Arc<AtomicBool>,

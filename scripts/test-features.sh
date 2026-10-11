@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 python3 scripts/test-e2e-version.py
+python3 scripts/test-native-portability.py
 cargo test --locked --workspace
 cargo test --locked --workspace --all-features
 cargo fmt --manifest-path crates/tinyvoice-module/Cargo.toml --all -- --check
