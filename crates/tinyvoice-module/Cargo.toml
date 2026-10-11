@@ -2,7 +2,7 @@
 
 [package]
 name = "tinyvoice-module"
-version = "0.1.15"
+version = "0.1.16"
 edition = "2024"
 rust-version = "1.88"
 license = "GPL-3.0-only"
@@ -26,7 +26,7 @@ getrandom = "0.4"
 tinyvoice-bus = { version = "0.1.2", path = "../tinyvoice-bus" }
 # The pure voice library stays independently usable and bus-agnostic; this
 # crate exists so the vendored TinyBus dependency never reaches it.
-tinyvoice = { version = "0.1.15", path = "../tinyvoice", features = ["capture", "hotkey"] }
+tinyvoice = { version = "0.1.16", path = "../tinyvoice", features = ["capture", "hotkey"] }
 # TinyBus provides the typed service interface and the dynamic module host ABI.
 tinybus = { version = "=0.1.2", default-features = false, features = ["macros", "modules"] }
 # The module-side SDK owns its runtime and exports the stable C entrypoints.
