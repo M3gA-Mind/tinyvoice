@@ -24,3 +24,6 @@ See [`example-retry-policy.md`](example-retry-policy.md) for a complete sample.
 
 The accepted hotkey lifecycle is specified in
 [`hotkey-module-lifecycle.md`](hotkey-module-lifecycle.md).
+
+Relay turn preparation is documented in
+[`relay-turn-preparation.md`](relay-turn-preparation.md).

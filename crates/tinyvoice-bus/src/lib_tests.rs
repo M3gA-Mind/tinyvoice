@@ -11,6 +11,7 @@ fn the_contract_accepts_its_own_version_and_newer_minors() {
     assert!(is_compatible(CONTRACT_VERSION));
     assert!(is_compatible((CONTRACT_VERSION.0, CONTRACT_VERSION.1 + 1)));
     assert!(!is_compatible((CONTRACT_VERSION.0 + 1, 0)));
+    assert!(!is_compatible((CONTRACT_VERSION.0, CONTRACT_VERSION.1 - 1)));
 }
 
 #[test]
@@ -77,4 +78,30 @@ fn every_voice_intent_has_a_stable_kind() {
 fn an_unrecognised_intent_tag_decodes_as_unknown() {
     let decoded: VoiceIntent = serde_json::from_str(r#"{"intent":"summon_helicopter"}"#).unwrap();
     assert_eq!(decoded, VoiceIntent::Unknown);
+}
+
+#[test]
+fn relay_values_round_trip_arbitrary_provider_content_and_empty_readback() {
+    let request = crate::relay::RelayTurnRequest {
+        messages: vec![serde_json::json!({"role":"user", "content":[null, {"text":"hello"}]})],
+        readback_prefix: "Read:".into(),
+    };
+    let encoded = serde_json::to_string(&request).unwrap();
+    assert_eq!(
+        serde_json::from_str::<crate::relay::RelayTurnRequest>(&encoded).unwrap(),
+        request
+    );
+    let result = crate::relay::PreparedRelayTurn {
+        prompt: "Read:".into(),
+        history: vec![("user".into(), "Read:".into())],
+        readback_payload: Some(String::new()),
+        content_free: false,
+        arm_speak_back: false,
+        answerable: false,
+    };
+    let encoded = serde_json::to_string(&result).unwrap();
+    assert_eq!(
+        serde_json::from_str::<crate::relay::PreparedRelayTurn>(&encoded).unwrap(),
+        result
+    );
 }
