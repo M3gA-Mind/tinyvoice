@@ -1,18 +1,25 @@
 //! Real loaded-module duplex, tool-authority and cleanup verification.
 
 use futures_util::{SinkExt, StreamExt};
+use futures_util::{SinkExt, StreamExt};
+use serde_json::{Value, json};
 use serde_json::{Value, json};
 use std::io;
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicUsize, Ordering},
+use std::sync::Arc;
+use tinyvoice_bus::live::{
+    ServerFrame,
+    session::{
+        ExecuteLiveToolReply, ExecuteLiveToolRequest, FinishLiveContextReply,
+        FinishLiveContextRequest, LiveBatch, LiveCommand, LiveHandle, LiveHandleRequest,
+        LiveOutput, LiveReadRequest, LiveSendRequest, LiveStartRequest, LiveState, LiveStatus,
+    },
 };
-use tinyvoice_bus::live::{ServerFrame, session::*};
+use tokio::sync::Mutex;
 
 #[derive(Clone, Default)]
 struct Host {
     calls: Arc<Mutex<Vec<ExecuteLiveToolRequest>>>,
-    finishes: Arc<AtomicUsize>,
+    finishes: Arc<Mutex<usize>>,
 }
 
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.LiveTools")]
@@ -24,10 +31,7 @@ impl Host {
         if request.context_token != "known-live-context" || request.name != "approved" {
             return Err(tinybus::Error::failed("no current executor"));
         }
-        self.calls
-            .lock()
-            .map_err(|_| tinybus::Error::failed("fixture lock"))?
-            .push(request);
+        self.calls.lock().await.push(request);
         // A previously declared tool is now revoked by the current host policy.
         Ok(ExecuteLiveToolReply {
             result: json!({"content": [{"type": "text", "text": "denied by current policy"}], "is_error": true}),
@@ -40,7 +44,7 @@ impl Host {
         if request.context_token != "known-live-context" {
             return Ok(FinishLiveContextReply { finished: false });
         }
-        self.finishes.store(1, Ordering::SeqCst);
+        *self.finishes.lock().await = 1;
         Ok(FinishLiveContextReply { finished: true })
     }
 }
@@ -83,7 +87,7 @@ pub(super) async fn verify_runtime(
     )
     .await??;
     provider.await??;
-    check_outputs(&outputs, &host)?;
+    check_outputs(&outputs, &host).await?;
     let released: LiveStatus = proxy
         .call(
             "LiveRelease",
@@ -92,7 +96,7 @@ pub(super) async fn verify_runtime(
             },),
         )
         .await?;
-    if released.state != LiveState::Closed || host.finishes.load(Ordering::SeqCst) != 1 {
+    if released.state != LiveState::Closed || *host.finishes.lock().await != 1 {
         return Err(io::Error::other("release did not finish known context").into());
     }
     let _: LiveStatus = proxy
@@ -219,7 +223,7 @@ async fn scripted_provider(listener: tokio::net::TcpListener) -> Result<(), io::
     socket.close(None).await.map_err(io::Error::other)
 }
 
-fn check_outputs(outputs: &[LiveOutput], host: &Host) -> CheckResult<()> {
+async fn check_outputs(outputs: &[LiveOutput], host: &Host) -> CheckResult<()> {
     for (index, output) in outputs.iter().enumerate() {
         if let LiveOutput::Json {
             frame:
@@ -229,23 +233,18 @@ fn check_outputs(outputs: &[LiveOutput], host: &Host) -> CheckResult<()> {
                     is_final: true,
                 },
         } = output
-        {
-            if outputs.get(index + 1)
+            && outputs.get(index + 1)
                 != Some(&LiveOutput::Persist {
                     role: *role,
                     text: text.clone(),
                 })
-            {
-                return Err(
-                    io::Error::other("final transcript was not followed by persistence").into(),
-                );
-            }
+        {
+            return Err(
+                io::Error::other("final transcript was not followed by persistence").into(),
+            );
         }
     }
-    let calls = host
-        .calls
-        .lock()
-        .map_err(|_| io::Error::other("fixture lock"))?;
+    let calls = host.calls.lock().await;
     if calls.len() != 1
         || calls[0].call_id != "native-7"
         || calls[0].arguments != json!({"input": "safe"})
