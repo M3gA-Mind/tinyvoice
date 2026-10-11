@@ -217,13 +217,13 @@ async fn native_input_preserves_audio_interrupt_and_close_and_rejects_malformed_
         phase.sender = Some(native.sender());
         phase.state = LiveState::Running;
     }
-    let encode = |bytes| base64::engine::general_purpose::STANDARD.encode(bytes);
+    let encode = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
     for command in [
         LiveCommand::Audio {
             pcm16_base64: "!!".into(),
         },
         LiveCommand::Audio {
-            pcm16_base64: encode([1]),
+            pcm16_base64: encode(&[1]),
         },
         LiveCommand::Audio {
             pcm16_base64: "x".repeat(MAX_AUDIO_BYTES * 2),
@@ -246,7 +246,7 @@ async fn native_input_preserves_audio_interrupt_and_close_and_rejects_malformed_
     }
     for command in [
         LiveCommand::Audio {
-            pcm16_base64: encode([1, 2]),
+            pcm16_base64: encode(&[1, 2]),
         },
         LiveCommand::Interrupt,
         LiveCommand::Stop,

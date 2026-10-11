@@ -152,3 +152,95 @@ async fn oversized_provider_startup_failure_becomes_a_bounded_terminal_reply() -
     assert_eq!(cleanup.finishes.load(Ordering::SeqCst), 1);
     Ok(())
 }
+
+#[derive(Debug)]
+struct AudioProvider(tinyagents_live::tinyliveagents::Capabilities);
+
+#[async_trait::async_trait]
+impl tinyagents_live::tinyliveagents::LiveProvider for AudioProvider {
+    fn id(&self) -> &'static str {
+        "fixture-audio"
+    }
+    fn capabilities(&self) -> tinyagents_live::tinyliveagents::Capabilities {
+        self.0
+    }
+    async fn connect(
+        &self,
+        _config: tinyagents_live::tinyliveagents::LiveConfig,
+    ) -> tinyagents_live::tinyliveagents::Result<tinyagents_live::tinyliveagents::LiveSession> {
+        let (commands, _commands) = tokio::sync::mpsc::channel(8);
+        let (events, receive) = tokio::sync::mpsc::channel(8);
+        events
+            .send(LiveEvent::Audio(vec![0_u8; MAX_AUDIO_BYTES * 2 + 2].into()))
+            .await
+            .map_err(|_| Error::Closed)?;
+        events
+            .send(LiveEvent::OutputTranscript {
+                text: "x".repeat(MAX_TEXT_BYTES + 1),
+                is_final: true,
+            })
+            .await
+            .map_err(|_| Error::Closed)?;
+        Ok(tinyagents_live::tinyliveagents::LiveSession::from_channels(
+            commands, receive,
+        ))
+    }
+}
+
+#[tokio::test]
+async fn native_audio_is_chunked_before_an_oversized_stream_event_closes_the_session()
+-> anyhow::Result<()> {
+    let (module, _host, port, _cleanup) = cleanup_fixture(false).await?;
+    let mut request: LiveStartRequest = serde_json::from_str(include_str!("fixtures/start.json"))?;
+    request.tool_port = port;
+    let mut prepared = super::super::prepare::prepare(&request, &module)?;
+    prepared.provider = Box::new(AudioProvider(prepared.provider.capabilities()));
+    let lease = Arc::new(Lease::new());
+    run(lease.clone(), request.clone(), prepared, module).await;
+    let batch = super::super::table::read_lease(
+        &lease,
+        tinyvoice_bus::live::session::LiveReadRequest {
+            handle: request.handle,
+            acknowledged_batch: None,
+        },
+    )
+    .await?;
+    let sizes = batch
+        .outputs
+        .iter()
+        .filter_map(|output| match output {
+            LiveOutput::Audio { pcm16_base64 } => {
+                Some(BASE64.decode(pcm16_base64).map(|audio| audio.len()))
+            }
+            _ => None,
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(sizes, [MAX_AUDIO_BYTES, MAX_AUDIO_BYTES, 2]);
+    assert!(matches!(
+        batch.outputs.last(),
+        Some(LiveOutput::Json {
+            frame: ServerFrame::Closed { .. }
+        })
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn cancellation_before_connect_still_finishes_the_known_host_context() -> anyhow::Result<()> {
+    let (module, _host, port, cleanup) = cleanup_fixture(false).await?;
+    let mut request: LiveStartRequest = serde_json::from_str(include_str!("fixtures/start.json"))?;
+    request.tool_port = port;
+    let prepared = super::super::prepare::prepare(&request, &module)?;
+    let lease = Arc::new(Lease::new());
+    lease.cancel();
+    run(lease.clone(), request, prepared, module).await;
+    assert_eq!(cleanup.finishes.load(Ordering::SeqCst), 1);
+    assert!(
+        lease
+            .phase
+            .lock()
+            .map_err(|_| anyhow::anyhow!("fixture lock"))?
+            .cleanup_confirmed
+    );
+    Ok(())
+}
