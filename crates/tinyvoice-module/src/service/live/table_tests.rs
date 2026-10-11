@@ -199,3 +199,114 @@ async fn cancelling_session_wakes_provider_and_transport_coordinators() -> tinyb
     .map_err(|_| unavailable())?;
     Ok(())
 }
+
+#[tokio::test]
+async fn native_input_preserves_audio_interrupt_and_close_and_rejects_malformed_bounds()
+-> tinybus::Result<()> {
+    use base64::Engine as _;
+    use tinyagents_live::tinyliveagents::{ClientCommand, LiveSession};
+    let sessions = Sessions::default();
+    assert!(format!("{sessions:?}").contains("closed"));
+    let handle = sessions.reserve()?.handle;
+    let lease = sessions.lease(&handle)?;
+    let (commands, mut rx) = mpsc::channel(8);
+    let (_events, events) = mpsc::channel(8);
+    let native = LiveSession::from_channels(commands, events);
+    {
+        let mut phase = lease.phase.lock().map_err(|_| unavailable())?;
+        phase.sender = Some(native.sender());
+        phase.state = LiveState::Running;
+    }
+    let encode = |bytes| base64::engine::general_purpose::STANDARD.encode(bytes);
+    for command in [
+        LiveCommand::Audio {
+            pcm16_base64: "!!".into(),
+        },
+        LiveCommand::Audio {
+            pcm16_base64: encode([1]),
+        },
+        LiveCommand::Audio {
+            pcm16_base64: "x".repeat(MAX_AUDIO_BYTES * 2),
+        },
+        LiveCommand::Text {
+            text: "x".repeat(MAX_TEXT_BYTES + 1),
+        },
+    ] {
+        assert!(
+            send_lease(
+                &lease,
+                LiveSendRequest {
+                    handle: handle.clone(),
+                    command
+                }
+            )
+            .await
+            .is_err()
+        );
+    }
+    for command in [
+        LiveCommand::Audio {
+            pcm16_base64: encode([1, 2]),
+        },
+        LiveCommand::Interrupt,
+        LiveCommand::Stop,
+    ] {
+        send_lease(
+            &lease,
+            LiveSendRequest {
+                handle: handle.clone(),
+                command,
+            },
+        )
+        .await?;
+    }
+    assert!(
+        matches!(rx.recv().await, Some(ClientCommand::Audio(bytes)) if bytes.as_ref() == [1,2])
+    );
+    assert!(matches!(rx.recv().await, Some(ClientCommand::Interrupt)));
+    assert!(matches!(rx.recv().await, Some(ClientCommand::Close)));
+    sessions.shutdown().await
+}
+
+#[tokio::test]
+async fn output_batches_split_between_atomic_groups_and_reject_a_single_oversized_group()
+-> tinybus::Result<()> {
+    let sessions = Sessions::default();
+    let handle = sessions.reserve()?.handle;
+    let lease = sessions.lease(&handle)?;
+    let group = vec![LiveOutput::Persist {
+        role: tinyvoice_bus::live::TranscriptRole::User,
+        text: "x".repeat(600_000),
+    }];
+    lease
+        .outputs
+        .send(group.clone())
+        .await
+        .map_err(|_| unavailable())?;
+    lease
+        .outputs
+        .send(group.clone())
+        .await
+        .map_err(|_| unavailable())?;
+    let first = sessions.read(read_request(&handle, None)).await?;
+    assert_eq!(first.outputs, group);
+    let second = sessions
+        .read(read_request(&handle, Some(first.batch)))
+        .await?;
+    assert_eq!(second.outputs, group);
+    lease
+        .outputs
+        .send(vec![LiveOutput::Persist {
+            role: tinyvoice_bus::live::TranscriptRole::User,
+            text: "\0".repeat(MAX_BATCH_BYTES),
+        }])
+        .await
+        .map_err(|_| unavailable())?;
+    assert!(
+        sessions
+            .read(read_request(&handle, Some(second.batch)))
+            .await
+            .is_err()
+    );
+    sessions.shutdown().await
+}
