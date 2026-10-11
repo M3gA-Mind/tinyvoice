@@ -1,5 +1,8 @@
 //! Vocabulary for preparing provider-relayed conversational turns.
 
+/// Compiled generic scheduling and local-brain completion callbacks.
+pub mod runtime;
+
 use serde::{Deserialize, Serialize};
 
 /// Maximum serialized request size accepted by the compiled relay operation.
