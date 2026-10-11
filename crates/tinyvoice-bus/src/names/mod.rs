@@ -69,6 +69,9 @@ pub mod methods {
     /// Native capture operation executed inside the compiled module.
     pub const RECORDING_FINISH: &str = "RecordingFinish";
 
+    /// Read owner-computed metrics for a finished recording.
+    pub const RECORDING_SUMMARY: &str = "RecordingSummary";
+
     /// Native capture operation executed inside the compiled module.
     pub const RECORDING_CANCEL: &str = "RecordingCancel";
 
@@ -102,6 +105,7 @@ pub const METHODS: &[&str] = &[
     methods::READ_AUDIO_OUTPUT,
     methods::RECORDING_CANCEL,
     methods::RECORDING_FINISH,
+    methods::RECORDING_SUMMARY,
     methods::RECORDING_START,
     methods::RELEASE_AUDIO_OUTPUT,
     methods::RESERVE_CAPTURE,

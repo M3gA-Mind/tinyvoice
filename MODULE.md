@@ -4,7 +4,7 @@ This package contains the native `tinyvoice` module for TinyBus module ABI v1.
 Install only the archive matching the host operating system and architecture.
 
 The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
-`/ai/tinyhumans/tinyvoice/Voice`, and provides 32 methods under contract 1.4.
+`/ai/tinyhumans/tinyvoice/Voice`, and provides 33 methods under contract 1.5.
 
 ## Methods
 
@@ -30,6 +30,7 @@ The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
 | `ReserveCapture` | permission request | known reservation handle |
 | `RecordingStart` | permission and reserved handle | opaque recording handle |
 | `RecordingFinish` | handle, gate threshold in one request | bounded WAV output handle and length |
+| `RecordingSummary` | finished output handle | ungated peak RMS and gated WAV sample count |
 | `RecordingCancel` | handle | structured result of unit |
 | `ReadAudioOutput` | handle, offset, length in one request | base64 WAV slice |
 | `ReleaseAudioOutput` | handle | structured result of unit |
@@ -72,6 +73,10 @@ Notes on the contract:
 Native capture operations return `CaptureResult` values rather than transport
 errors. They require an explicit microphone grant from the host; denial never
 opens a device. One active recording or stream owns the microphone slot.
+`RecordingSummary` returns only module-computed metrics: ungated peak RMS for
+the existing silence policy and sample count for the prepared WAV. Audio
+samples remain inside the module unless the host explicitly reads a bounded
+WAV slice.
 Continuous polling returns at most two chunks from an eight-chunk queue, each
 containing at most 32,768 interleaved f32 samples. Call `CaptureStop` even after
 the queue closes to release the lease and observe terminal device errors. See

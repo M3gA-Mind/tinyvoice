@@ -39,6 +39,20 @@ pub struct AudioOutput {
     /// WAV bytes available.
     pub length: usize,
 }
+/// Request owner-computed recording metrics without reading audio samples.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordingSummaryRequest {
+    /// Finished recording/output lease.
+    pub handle: CaptureHandle,
+}
+/// Metrics for the exact output retained by the module.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecordingSummary {
+    /// Number of mono 16 kHz samples in the prepared WAV after silence gating.
+    pub sample_count: usize,
+    /// Peak RMS of the ungated 16 kHz mono recording, measured in 20 ms frames.
+    pub peak_rms: f32,
+}
 /// Read a bounded slice of a held audio output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReadAudioRequest {

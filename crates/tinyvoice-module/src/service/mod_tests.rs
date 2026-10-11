@@ -675,7 +675,8 @@ async fn native_capture_members_own_resources_and_return_bounded_wav_batches() -
 {
     use tinyvoice_bus::capture::{
         AudioOutput, CaptureError, CaptureHandle, CaptureResult, ReadAudioRequest,
-        RecordingFinishRequest, RecordingStartRequest,
+        RecordingFinishRequest, RecordingStartRequest, RecordingSummary,
+        RecordingSummaryRequest,
     };
     let bus = MemoryBus::new();
     let task = Broker::new().spawn(bus.clone());
@@ -719,6 +720,17 @@ async fn native_capture_members_own_resources_and_return_bounded_wav_batches() -
         )
         .await?;
     let output = output.unwrap();
+    let summary: CaptureResult<RecordingSummary> = proxy
+        .call(
+            names::methods::RECORDING_SUMMARY,
+            (RecordingSummaryRequest {
+                handle: output.handle.clone(),
+            },),
+        )
+        .await?;
+    let summary = summary.unwrap();
+    assert_eq!(summary.sample_count, 320);
+    assert!((summary.peak_rms - 0.25).abs() < f32::EPSILON);
     let bytes: CaptureResult<String> = proxy
         .call(
             names::methods::READ_AUDIO_OUTPUT,

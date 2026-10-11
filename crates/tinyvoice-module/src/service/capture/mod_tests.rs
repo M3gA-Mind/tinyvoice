@@ -200,6 +200,24 @@ async fn finish_holds_prepared_wav_for_bounded_reads_and_explicit_release() -> C
     Ok(())
 }
 
+#[tokio::test]
+async fn recording_summary_keeps_ungated_peak_and_gated_output_length() -> CaptureResult<()> {
+    let (capture, _) = fixture(false);
+    let handle = capture.start(MicrophonePermission::Granted)?;
+    let output = capture
+        .finish(RecordingFinishRequest {
+            handle: handle.clone(),
+            gate_threshold: 0.5,
+        })
+        .await?;
+    let summary = capture.summary(&RecordingSummaryRequest { handle })?;
+
+    assert_eq!(summary.sample_count, 0);
+    assert!((summary.peak_rms - 0.25).abs() < f32::EPSILON);
+    assert_eq!(output.length, 44);
+    Ok(())
+}
+
 #[test]
 fn silence_gate_preserves_short_speech_before_a_long_silent_tail() -> CaptureResult<()> {
     let mut samples = vec![0.1; 1_000];

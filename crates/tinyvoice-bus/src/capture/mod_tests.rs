@@ -53,3 +53,35 @@ fn continuous_format_and_batches_preserve_native_samples() -> Result<(), serde_j
     assert!(!decoded.closed);
     Ok(())
 }
+
+#[test]
+fn recording_summary_is_additive_and_finish_keeps_its_wire_shape() -> Result<(), serde_json::Error>
+{
+    let handle = CaptureHandle("lease".into());
+    let finish = RecordingFinishRequest {
+        handle: handle.clone(),
+        gate_threshold: 0.002,
+    };
+    let finish_wire = serde_json::to_value(finish)?;
+    assert_eq!(
+        finish_wire,
+        serde_json::json!({"handle":"lease", "gate_threshold":0.002})
+    );
+
+    let request = RecordingSummaryRequest {
+        handle: handle.clone(),
+    };
+    assert_eq!(
+        serde_json::to_value(request)?,
+        serde_json::json!({"handle":"lease"})
+    );
+    let summary = RecordingSummary {
+        sample_count: 320,
+        peak_rms: 0.25,
+    };
+    assert_eq!(
+        serde_json::from_value::<RecordingSummary>(serde_json::to_value(&summary)?)?,
+        summary
+    );
+    Ok(())
+}
