@@ -48,6 +48,9 @@ jobs:
       - name: Check module formatting
         run: cargo fmt --manifest-path crates/tinyvoice-module/Cargo.toml --all -- --check
 
+      - name: Check release version updates
+        run: .github/scripts/test-release-version-bump.sh
+
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
