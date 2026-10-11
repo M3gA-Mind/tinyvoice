@@ -212,6 +212,8 @@ pub struct ApplyRelayEffectsReply {
 }
 
 /// Cleanup never creates an unknown invocation or revives a finished one.
+/// Stops native work without revoking its registered context: bounded terminal
+/// timeout effects may follow finish before the host retires the context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FinishRelayBrainReply {
     /// True for a known invocation that has stopped, including repeat cleanup.

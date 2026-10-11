@@ -63,10 +63,19 @@ execution.
 
 Progress JSON and effect groups are at most one MiB; individual selected
 deltas and completion text are at most 256 KiB. Apply retries at most twice
-with the same delivery ID. These bounds refuse new/unacknowledged work rather
+with the same delivery ID and within the remaining turn budget. Exhausted
+acknowledgments are indeterminate: no new contradictory failure effects are
+sent after a possibly committed group. These bounds refuse new/unacknowledged work rather
 than pretending it committed.
 
 ## Lifecycle and verification
+
+The execution slot remains owned until native finish completes. If native
+cleanup cannot be confirmed, execution-slot admission closes instead of
+starting more work while the earlier brain may still be running. Final
+overall-timeout notifications follow native cleanup under their separate
+bounded callback budget; the host keeps the registered context available for
+these terminal effects after finish stops the native work.
 
 Release owns its worker join under a two-second deadline. Dropping a release
 future aborts the worker rather than detaching it. Shutdown joins cleanups

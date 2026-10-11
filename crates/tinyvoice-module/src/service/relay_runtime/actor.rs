@@ -111,7 +111,7 @@ async fn coordinate(
             ()=tokio::time::sleep_until(deadline),if !foreground_closed=>{
                 acknowledge(lease,request,proxy,invocation,delivery,streamed).await?;foreground_closed=true;
             },
-            ()=tokio::time::sleep_until(expiry)=>return lose(request,delivery,streamed,foreground_closed),
+            ()=tokio::time::sleep_until(expiry)=>{lose(request,delivery,streamed,foreground_closed); return Ok(());},
         }
     });
 
@@ -128,7 +128,7 @@ async fn coordinate(
                 acknowledge(lease, request, proxy, invocation, delivery, streamed).await?;
                 foreground_closed = true;
             },
-            () = tokio::time::sleep_until(expiry) => return lose(request, delivery, streamed, foreground_closed),
+            () = tokio::time::sleep_until(expiry) => {lose(request, delivery, streamed, foreground_closed); return Ok(());},
         }
     };
     if !started.started {
@@ -175,7 +175,7 @@ async fn coordinate(
             ()=tokio::time::sleep_until(deadline),if !foreground_closed=>{
                 acknowledge(lease,request,proxy,invocation,delivery,streamed).await?;foreground_closed=true;
             },
-            ()=tokio::time::sleep_until(expiry)=>return lose(request,delivery,streamed,foreground_closed),
+            ()=tokio::time::sleep_until(expiry)=>{lose(request,delivery,streamed,foreground_closed); return Ok(());},
         }
     }
 }
@@ -232,7 +232,7 @@ fn lose(
     delivery: &mut Delivery,
     streamed: bool,
     foreground_closed: bool,
-) -> tinybus::Result<()> {
+) {
     let effects = if foreground_closed {
         vec![RelayEffect::Deferred {
             outcome: RelayOutcome::Lost,
@@ -241,7 +241,6 @@ fn lose(
         lost_effects(streamed, request)
     };
     delivery.terminal = Some(effects);
-    Ok(())
 }
 async fn acknowledge(
     lease: &Lease,
