@@ -200,6 +200,24 @@ async fn finish_holds_prepared_wav_for_bounded_reads_and_explicit_release() -> C
     Ok(())
 }
 
+#[tokio::test]
+async fn recording_summary_preserves_short_capture_before_gate_closes() -> CaptureResult<()> {
+    let (capture, _) = fixture(false);
+    let handle = capture.start(MicrophonePermission::Granted)?;
+    let output = capture
+        .finish(RecordingFinishRequest {
+            handle: handle.clone(),
+            gate_threshold: 0.5,
+        })
+        .await?;
+    let summary = capture.summary(&RecordingSummaryRequest { handle })?;
+
+    assert_eq!(summary.sample_count, 320);
+    assert!((summary.peak_rms - 0.25).abs() < f32::EPSILON);
+    assert_eq!(output.length, 44 + 320 * 2);
+    Ok(())
+}
+
 #[test]
 fn silence_gate_preserves_short_speech_before_a_long_silent_tail() -> CaptureResult<()> {
     let mut samples = vec![0.1; 1_000];
@@ -1199,4 +1217,64 @@ async fn lost_cleanup_notifications_fail_closed() {
         wait_for_idle(&busy, idle).await,
         Err(CaptureError::Device(_))
     ));
+}
+
+#[test]
+fn recording_summary_uses_gated_duration_and_ungated_energy() -> CaptureResult<()> {
+    let raw = RawRecording {
+        samples: vec![0.25; 16_000],
+        source_rate: 16_000,
+        channels: 1,
+    };
+    let wav = prepare(&raw, 0.5)?;
+    let summary = summarize(&raw, &wav)?;
+    assert!(summary.sample_count < raw.samples.len());
+    assert_eq!(summary.sample_count * 2 + 44, wav.len());
+    assert!((summary.peak_rms - 0.25).abs() < f32::EPSILON);
+    Ok(())
+}
+
+#[tokio::test]
+async fn cancelling_an_abandoned_finish_waits_for_native_cleanup() -> CaptureResult<()> {
+    let (capture, _) = fixture(false);
+    let handle = capture.start(MicrophonePermission::Granted)?;
+    let (done, pending) = tokio::sync::oneshot::channel();
+    capture
+        .recordings
+        .lock()
+        .map_err(|_| state_error())?
+        .get_mut(&handle)
+        .ok_or(CaptureError::UnknownHandle)?
+        .recording = Box::new(PendingRecording(pending));
+    let mut finish = Box::pin(capture.finish(RecordingFinishRequest {
+        handle: handle.clone(),
+        gate_threshold: 0.0,
+    }));
+    std::future::poll_fn(|cx| {
+        assert!(finish.as_mut().poll(cx).is_pending());
+        std::task::Poll::Ready(())
+    })
+    .await;
+    drop(finish);
+    let mut cancel = Box::pin(capture.cancel(&handle));
+    std::future::poll_fn(|cx| {
+        assert!(
+            cancel.as_mut().poll(cx).is_pending(),
+            "cancel must wait for the native finishing resource"
+        );
+        std::task::Poll::Ready(())
+    })
+    .await;
+    done.send(()).map_err(|()| state_error())?;
+    cancel.await?;
+    assert!(!capture.busy.load(Ordering::SeqCst));
+    assert_eq!(
+        capture.summary(&RecordingSummaryRequest {
+            handle: handle.clone()
+        }),
+        Err(CaptureError::UnknownHandle)
+    );
+    let next = capture.start(MicrophonePermission::Granted)?;
+    capture.cancel(&next).await?;
+    Ok(())
 }

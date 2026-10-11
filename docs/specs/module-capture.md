@@ -10,12 +10,19 @@ while preserving every existing method's arity and wire format:
 | ReserveCapture | RecordingStartRequest (permission only) | CaptureResult of CaptureHandle |
 | RecordingStart | RecordingStartRequest | CaptureResult of CaptureHandle |
 | RecordingFinish | RecordingFinishRequest | CaptureResult of AudioOutput |
+| RecordingSummary | RecordingSummaryRequest | CaptureResult of RecordingSummary |
 | RecordingCancel | CaptureHandle | CaptureResult of unit |
 | ReadAudioOutput | ReadAudioRequest | CaptureResult of base64 WAV bytes |
 | ReleaseAudioOutput | CaptureHandle | CaptureResult of unit |
 | CaptureStart | RecordingStartRequest | CaptureResult of CaptureStream |
 | CapturePoll | CapturePollRequest | CaptureResult of CaptureBatch |
 | CaptureStop | CaptureHandle | CaptureResult of unit |
+
+Contract 1.5 adds `RecordingSummary` without changing any previous member's
+arity or response. Given a finished output handle, it returns the sample count
+from the gated WAV and the peak RMS measured on the ungated 16 kHz mono audio.
+This preserves the existing silence decision while keeping raw samples inside
+the owner module.
 
 ListInputDevices and CaptureShutdown have zero arguments. Each other new member takes exactly one.
 ReserveCapture returns a module-generated handle before device startup. The host
@@ -35,7 +42,10 @@ marks the known reservation and waits for native setup and cleanup. Startup
 workers reclaim resources if their result receiver disappears. Finish consumes it and waits for capture to stop before
 downmixing, resampling to 16 kHz, optional silence gating and PCM16 WAV encoding.
 Cancel consumes the recording and waits for device shutdown, discarding its
-audio and capture errors. Invalid gate thresholds retain the lease so it can
+audio and capture errors. If finish already consumed the recording, cancel marks
+that finishing lease canceled and awaits its own completion receipt before
+acknowledging native cleanup. Losing the finish or cancel reply does not release
+capacity early, and a receipt never waits for a later recording. Invalid gate thresholds retain the lease so it can
 be canceled. Setup, processing and storage failures release device capacity.
 Native startup, finish, cancel and stop run in owned blocking workers. Dropping a
 request future does not release its BusyGuard while cleanup/preparation is pending.
@@ -66,13 +76,13 @@ names, error detail, handles, audio, paths and request arguments.
 
 Local fixtures exercise lifecycle, bounds, faults and in-memory bus dispatch
 without hardware or external services. The actual compiled artifact verifier
-checks all 32 declared members and permission denial without opening a device.
+checks all 33 declared members and permission denial without opening a device.
 The native device bridge follows the repository's existing physical-device
 coverage exception; manager and processing code remain subject to the 90%
 per-file threshold.
 
 The release workflow installs ALSA development headers for Linux module builds.
-OpenHuman must pin a released artifact compatible with current contract 1.4
+OpenHuman must pin a released artifact compatible with current contract 1.5
 (this capture slice was introduced in 1.3) and verify its digest before
 switching callers. Module-owned hotkeys are specified in
 `hotkey-module-lifecycle.md`.

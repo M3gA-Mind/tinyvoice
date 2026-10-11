@@ -67,6 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if declared != tinyvoice_bus::METHODS {
         return Err(io::Error::other("capture manifest differs from contract").into());
     }
+    verify_recording_summary(&proxy).await?;
     // Default-denied permission must reject before any native device is opened.
     let denied: tinyvoice_bus::capture::CaptureResult<tinyvoice_bus::capture::CaptureHandle> =
         proxy
@@ -122,6 +123,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info.name
     );
     broker_task.abort();
+    Ok(())
+}
+
+async fn verify_recording_summary(
+    proxy: &tinybus::Proxy,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let summary: tinyvoice_bus::capture::CaptureResult<tinyvoice_bus::capture::RecordingSummary> =
+        proxy
+            .call(
+                tinyvoice_bus::names::methods::RECORDING_SUMMARY,
+                (tinyvoice_bus::capture::RecordingSummaryRequest {
+                    handle: tinyvoice_bus::capture::CaptureHandle("fixture-unknown-output".into()),
+                },),
+            )
+            .await?;
+    if summary != Err(tinyvoice_bus::capture::CaptureError::UnknownHandle) {
+        return Err(io::Error::other("unknown recording summary lease was accepted").into());
+    }
     Ok(())
 }
 

@@ -10,7 +10,7 @@ use tinyvoice::capture::RawRecording;
 use tinyvoice_bus::capture::{
     AudioOutput, CaptureBatch, CaptureError, CaptureHandle, CapturePollRequest, CaptureResult,
     CaptureStream, MicrophonePermission, ReadAudioRequest, RecordingFinishRequest,
-    RecordingStartRequest,
+    RecordingStartRequest, RecordingSummary, RecordingSummaryRequest,
 };
 
 const MAX_RESERVATIONS: usize = 16;
@@ -54,6 +54,36 @@ struct StreamLease {
     busy: BusyGuard,
 }
 #[derive(Debug)]
+struct Finishing {
+    canceled: AtomicBool,
+    completed: tokio::sync::watch::Sender<bool>,
+}
+#[derive(Debug)]
+struct FinishGuard {
+    handle: CaptureHandle,
+    finishing: Arc<Mutex<HashMap<CaptureHandle, Arc<Finishing>>>>,
+    receipt: Arc<Finishing>,
+    busy: Option<BusyGuard>,
+}
+impl Drop for FinishGuard {
+    fn drop(&mut self) {
+        // Keep receipt lookup serialized until the native ownership is released.
+        let mut finishing = self
+            .finishing
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        drop(self.busy.take());
+        self.receipt.completed.send_replace(true);
+        finishing.remove(&self.handle);
+    }
+}
+
+#[derive(Debug)]
+struct PreparedOutput {
+    wav: Vec<u8>,
+    summary: RecordingSummary,
+}
+#[derive(Debug)]
 struct PendingStart {
     canceled: AtomicBool,
     completed: tokio::sync::watch::Sender<bool>,
@@ -75,8 +105,8 @@ pub(super) struct Capture {
     idle: tokio::sync::watch::Sender<bool>,
     closed: AtomicBool,
     recordings: Mutex<HashMap<CaptureHandle, Lease>>,
-    outputs: Arc<Mutex<HashMap<CaptureHandle, Vec<u8>>>>,
-    finishing: Arc<Mutex<HashMap<CaptureHandle, Arc<AtomicBool>>>>,
+    outputs: Arc<Mutex<HashMap<CaptureHandle, PreparedOutput>>>,
+    finishing: Arc<Mutex<HashMap<CaptureHandle, Arc<Finishing>>>>,
     reservations: Mutex<HashMap<CaptureHandle, Reservation>>,
     streams: Mutex<HashMap<CaptureHandle, StreamLease>>,
 }
@@ -125,7 +155,7 @@ impl Capture {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             for canceled in finishing.values() {
-                canceled.store(true, Ordering::SeqCst);
+                canceled.canceled.store(true, Ordering::SeqCst);
             }
             self.outputs
                 .lock()
@@ -215,7 +245,10 @@ impl Capture {
                 return Err(CaptureError::InvalidParameters);
             }
             let Lease { recording, busy } = self.take(&request.handle)?;
-            let canceled = Arc::new(AtomicBool::new(false));
+            let canceled = Arc::new(Finishing {
+                canceled: AtomicBool::new(false),
+                completed: tokio::sync::watch::channel(false).0,
+            });
             finishing.insert(request.handle.clone(), canceled.clone());
             (recording, busy, canceled)
         };
@@ -223,35 +256,38 @@ impl Capture {
         let outputs = self.outputs.clone();
         let finishing = self.finishing.clone();
         let runtime = tokio::runtime::Handle::current();
+        let guard = FinishGuard {
+            handle: request.handle.clone(),
+            finishing: finishing.clone(),
+            receipt: canceled.clone(),
+            busy: Some(busy),
+        };
         tokio::task::spawn_blocking(move || {
-            let result = (|| {
+            let _guard = guard;
+            (|| {
                 let raw = runtime
                     .block_on(recording.finish())
                     .map_err(CaptureError::Device)?;
                 let wav = backend.prepare(&raw, request.gate_threshold)?;
+                let summary = summarize(&raw, &wav)?;
                 let _finish_lock = finishing.lock().map_err(|_| state_error())?;
-                if canceled.load(Ordering::SeqCst) {
+                if canceled.canceled.load(Ordering::SeqCst) {
                     return Err(CaptureError::Cancelled);
                 }
                 let mut outputs = outputs.lock().map_err(|_| state_error())?;
-                let total: usize = outputs.values().map(Vec::len).sum();
+                let total: usize = outputs.values().map(|output| output.wav.len()).sum();
                 if outputs.len() >= MAX_OUTPUTS
                     || wav.len() > MAX_OUTPUT_BYTES.saturating_sub(total)
                 {
                     return Err(CaptureError::LimitExceeded);
                 }
                 let length = wav.len();
-                outputs.insert(request.handle.clone(), wav);
+                outputs.insert(request.handle.clone(), PreparedOutput { wav, summary });
                 Ok(AudioOutput {
                     handle: request.handle.clone(),
                     length,
                 })
-            })();
-            if let Ok(mut finishing) = finishing.lock() {
-                finishing.remove(&request.handle);
-            }
-            drop(busy);
-            result
+            })()
         })
         .await
         .map_err(|_| state_error())?
@@ -260,7 +296,27 @@ impl Capture {
         let was_pending = self.cancel_pending(handle).await?;
         let lease = match self.take(handle) {
             Ok(lease) => lease,
-            Err(CaptureError::UnknownHandle) if was_pending => return Ok(()),
+            Err(CaptureError::UnknownHandle) => {
+                let receipt = self
+                    .finishing
+                    .lock()
+                    .map_err(|_| state_error())?
+                    .get(handle)
+                    .cloned();
+                if let Some(receipt) = receipt {
+                    receipt.canceled.store(true, Ordering::SeqCst);
+                    let mut completed = receipt.completed.subscribe();
+                    while !*completed.borrow_and_update() {
+                        completed.changed().await.map_err(|_| state_error())?;
+                    }
+                    return Ok(());
+                }
+                return if was_pending {
+                    Ok(())
+                } else {
+                    Err(CaptureError::UnknownHandle)
+                };
+            }
             Err(error) => return Err(error),
         };
         let runtime = tokio::runtime::Handle::current();
@@ -343,19 +399,33 @@ impl Capture {
             .outputs
             .lock()
             .map_err(|_| CaptureError::Device("audio output state unavailable".into()))?;
-        let wav = outputs
+        let output = outputs
             .get(&request.handle)
             .ok_or(CaptureError::UnknownHandle)?;
-        if request.offset > wav.len() {
+        if request.offset > output.wav.len() {
             return Err(CaptureError::InvalidParameters);
         }
-        let end = request.offset.saturating_add(request.length).min(wav.len());
-        Ok(BASE64.encode(&wav[request.offset..end]))
+        let end = request
+            .offset
+            .saturating_add(request.length)
+            .min(output.wav.len());
+        Ok(BASE64.encode(&output.wav[request.offset..end]))
+    }
+    pub(super) fn summary(
+        &self,
+        request: &RecordingSummaryRequest,
+    ) -> CaptureResult<RecordingSummary> {
+        self.outputs
+            .lock()
+            .map_err(|_| CaptureError::Device("audio output state unavailable".into()))?
+            .get(&request.handle)
+            .map(|output| output.summary.clone())
+            .ok_or(CaptureError::UnknownHandle)
     }
     pub(super) fn release(&self, handle: &CaptureHandle) -> CaptureResult<()> {
         let finishing = self.finishing.lock().map_err(|_| state_error())?;
         if let Some(canceled) = finishing.get(handle) {
-            canceled.store(true, Ordering::SeqCst);
+            canceled.canceled.store(true, Ordering::SeqCst);
             self.outputs
                 .lock()
                 .map_err(|_| state_error())?
@@ -440,6 +510,34 @@ fn prepare(raw: &RawRecording, threshold: f32) -> CaptureResult<Vec<u8>> {
         return Err(CaptureError::LimitExceeded);
     }
     Ok(wav)
+}
+
+/// Preserve the pre-module silence gate's two distinct views: RMS comes from
+/// ungated speech, while duration describes the exact WAV retained for STT.
+fn summarize(raw: &RawRecording, wav: &[u8]) -> CaptureResult<RecordingSummary> {
+    use tinyvoice::audio;
+
+    let channels = u16::try_from(raw.channels).map_err(|_| CaptureError::InvalidParameters)?;
+    let mono = audio::to_mono(&raw.samples, channels)
+        .map_err(|error| CaptureError::Device(error.to_string()))?;
+    let samples = audio::resample(&mono, raw.source_rate, audio::STT_SAMPLE_RATE)
+        .map_err(|error| CaptureError::Device(error.to_string()))?;
+    let frame_samples = (audio::STT_SAMPLE_RATE as usize / 50).max(1);
+    let peak_rms = samples
+        .chunks(frame_samples)
+        .map(audio::rms)
+        .fold(0.0_f32, f32::max);
+    let pcm_bytes = wav
+        .len()
+        .checked_sub(44)
+        .ok_or(CaptureError::InvalidParameters)?;
+    if pcm_bytes % 2 != 0 {
+        return Err(CaptureError::InvalidParameters);
+    }
+    Ok(RecordingSummary {
+        sample_count: pcm_bytes / 2,
+        peak_rms,
+    })
 }
 
 #[cfg(test)]
