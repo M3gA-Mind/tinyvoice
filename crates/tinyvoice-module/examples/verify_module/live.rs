@@ -5,11 +5,16 @@ use serde_json::{Value, json};
 use std::io;
 use std::sync::Arc;
 use tinyvoice_bus::live::{
-    ServerFrame,
+    ServerFrame, TranscriptRole, TransportFrame,
     session::{
         ExecuteLiveToolReply, ExecuteLiveToolRequest, FinishLiveContextReply,
         FinishLiveContextRequest, LiveBatch, LiveCommand, LiveHandle, LiveHandleRequest,
         LiveOutput, LiveReadRequest, LiveSendRequest, LiveStartRequest, LiveState, LiveStatus,
+    },
+    transport::{
+        CloseLiveTransportReply, CloseLiveTransportRequest, DeliverLiveEffectsReply,
+        DeliverLiveEffectsRequest, LiveBindTransportRequest, LiveTransportPort, ReadLiveInputReply,
+        ReadLiveInputRequest,
     },
 };
 use tokio::sync::Mutex;
@@ -75,7 +80,7 @@ pub(super) async fn verify_runtime(
     if started.state != LiveState::Starting {
         return Err(io::Error::other("start did not admit asynchronously").into());
     }
-    let retry: LiveStatus = proxy.call("LiveStart", (request,)).await?;
+    let retry: LiveStatus = proxy.call("LiveStart", (request.clone(),)).await?;
     if retry.handle != started.handle {
         return Err(io::Error::other("start retry changed handle").into());
     }
@@ -105,6 +110,7 @@ pub(super) async fn verify_runtime(
             },),
         )
         .await?;
+    verify_bound_transport(proxy, client, &host, request).await?;
     let _: () = proxy.call("LiveShutdown", ()).await?;
     if proxy.call::<LiveStatus>("LiveReserve", ()).await.is_ok() {
         return Err(io::Error::other("shutdown reopened admission").into());
@@ -254,5 +260,126 @@ async fn check_outputs(outputs: &[LiveOutput], host: &Host) -> CheckResult<()> {
     for id in ["native-7", "unknown-8"] {
         if !outputs.iter().any(|output| matches!(output, LiveOutput::Json { frame: ServerFrame::ToolFinished { call_id, ok: false, cancelled: false, .. } } if call_id == id)) { return Err(io::Error::other("denied/unknown tool was fabricated as success").into()); }
     }
+    Ok(())
+}
+
+#[derive(Clone, Default)]
+struct ClientTransport {
+    outputs: Arc<Mutex<Vec<LiveOutput>>>,
+    committed: Arc<Mutex<std::collections::HashSet<String>>>,
+    closed: Arc<tokio::sync::Notify>,
+    attempts: Arc<Mutex<usize>>,
+}
+
+#[tinybus::interface(name = "ai.tinyhumans.tinyvoice.LiveTransport")]
+impl ClientTransport {
+    async fn read_live_input(
+        &self,
+        request: ReadLiveInputRequest,
+    ) -> tinybus::Result<ReadLiveInputReply> {
+        // The module reads this replayable mechanical socket callback itself;
+        // the verification host never drives the provider or session pump.
+        tokio::task::yield_now().await;
+        Ok(ReadLiveInputReply {
+            sequence: if request.acknowledged_frame == 0 {
+                1
+            } else {
+                request.acknowledged_frame
+            },
+            frame: (request.acknowledged_frame == 0).then(|| TransportFrame::Text {
+                text: r#"{"type":"text","text":"hello"}"#.into(),
+            }),
+        })
+    }
+    async fn deliver_live_effects(
+        &self,
+        request: DeliverLiveEffectsRequest,
+    ) -> tinybus::Result<DeliverLiveEffectsReply> {
+        let mut attempts = self.attempts.lock().await;
+        *attempts += 1;
+        if self.committed.lock().await.insert(request.delivery_id) {
+            self.outputs.lock().await.extend(request.outputs);
+        }
+        if *attempts == 1 {
+            return Err(tinybus::Error::failed(
+                "verification lost reply after committing effects",
+            ));
+        }
+        Ok(DeliverLiveEffectsReply { delivered: true })
+    }
+    async fn close_live_transport(
+        &self,
+        _request: CloseLiveTransportRequest,
+    ) -> tinybus::Result<CloseLiveTransportReply> {
+        self.closed.notify_one();
+        Ok(CloseLiveTransportReply { closed: true })
+    }
+}
+
+async fn verify_bound_transport(
+    proxy: &tinybus::Proxy,
+    client: &tinybus::Connection,
+    host: &Host,
+    mut request: LiveStartRequest,
+) -> CheckResult<()> {
+    host.calls.lock().await.clear();
+    let transport = ClientTransport::default();
+    client
+        .serve_at("/test/LiveTransport".try_into()?, transport.clone())
+        .await?;
+    client.request_name("ai.test.LiveTransport").await?;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let address = listener.local_addr()?;
+    let provider = tokio::spawn(scripted_provider(listener));
+    let reserved: LiveStatus = proxy.call("LiveReserve", ()).await?;
+    request.handle = reserved.handle.clone();
+    request.connection = tinyvoice_bus::live::session::LiveConnection::GeminiRelay {
+        ws_url: format!("ws://{address}"),
+        session_id: "provider-session".into(),
+        model: "fixture-model".into(),
+    };
+    let _: LiveStatus = proxy
+        .call(
+            "LiveBindTransport",
+            (LiveBindTransportRequest {
+                handle: reserved.handle.clone(),
+                port: LiveTransportPort {
+                    bus_name: "ai.test.LiveTransport".into(),
+                    object_path: "/test/LiveTransport".into(),
+                    context_token: "known-client".into(),
+                },
+            },),
+        )
+        .await?;
+    let _: LiveStatus = proxy.call("LiveStart", (request,)).await?;
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        transport.closed.notified(),
+    )
+    .await?;
+    provider.await??;
+    let outputs = transport.outputs.lock().await;
+    check_outputs(&outputs, host).await?;
+    if outputs.iter().filter(|effect| matches!(effect, LiveOutput::Persist { role: TranscriptRole::User, text } if text == "hello")).count() != 1 {
+        return Err(io::Error::other("typed input persistence repeated or was lost").into());
+    }
+    if !outputs.iter().any(|effect| {
+        matches!(
+            effect,
+            LiveOutput::Json {
+                frame: ServerFrame::Closed { .. }
+            }
+        )
+    }) {
+        return Err(io::Error::other("module transport lost terminal output").into());
+    }
+    let _: LiveStatus = proxy
+        .call(
+            "LiveRelease",
+            (LiveHandleRequest {
+                handle: reserved.handle,
+            },),
+        )
+        .await?;
     Ok(())
 }

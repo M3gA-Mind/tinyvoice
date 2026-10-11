@@ -240,3 +240,27 @@ async fn dropping_native_callback_notifies_host_to_cancel_its_known_invocation()
     assert_eq!(seen[0].invocation_id.len(), 32);
     Ok(())
 }
+
+#[test]
+fn callback_cancellation_guard_can_drop_outside_its_runtime_context() -> anyhow::Result<()> {
+    let runtime = tokio::runtime::Runtime::new()?;
+    let (guard, _host) = runtime.block_on(async {
+        let (tool, _authority, host) = fixture().await?;
+        Ok::<_, tinybus::Error>((
+            InvocationGuard {
+                proxy: tool.proxy.clone(),
+                request: Some(CancelLiveToolRequest {
+                    context_token: "known-context".into(),
+                    invocation_id: "known-invocation".into(),
+                    call_id: "native-call".into(),
+                }),
+            },
+            host,
+        ))
+    })?;
+    // Dropping a cancelled future is legal on another executor or after the
+    // creating executor has stopped. Destructors must never require its enter guard.
+    drop(runtime);
+    drop(guard);
+    Ok(())
+}
