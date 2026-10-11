@@ -1169,9 +1169,14 @@ async fn relay_limits_are_configured_once_before_lease_admission() {
     assert_eq!(first, limits);
     let repeated: serde_json::Value = proxy.call("RelayConfigure", &limits).await.unwrap();
     assert_eq!(repeated, first);
-    let changed: tinybus::Result<serde_json::Value> = proxy.call("RelayConfigure", serde_json::json!({"max_active_turns":2,"max_pending_turns":16})).await;
+    let changed: tinybus::Result<serde_json::Value> = proxy
+        .call(
+            "RelayConfigure",
+            serde_json::json!({"max_active_turns":2,"max_pending_turns":16}),
+        )
+        .await;
     assert!(changed.is_err());
-    let lease:serde_json::Value = proxy.call("RelayReserve", ()).await.unwrap();
-    assert_eq!(lease["state"],"reserved");
-    assert_eq!(lease["handle"]["id"].as_str().unwrap().len(),32);
+    let lease: serde_json::Value = proxy.call("RelayReserve", ()).await.unwrap();
+    assert_eq!(lease["state"], "reserved");
+    assert_eq!(lease["handle"]["id"].as_str().unwrap().len(), 32);
 }

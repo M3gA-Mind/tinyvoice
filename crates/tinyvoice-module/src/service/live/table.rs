@@ -459,7 +459,7 @@ fn unavailable() -> tinybus::Error {
 pub(super) mod tests;
 
 /// Generate unpredictable correlation identities without deriving host secrets.
-pub(super) fn random_id() -> tinybus::Result<String> {
+pub(in crate::service) fn random_id() -> tinybus::Result<String> {
     let mut random = [0_u8; 16];
     getrandom::fill(&mut random)
         .map_err(|_| tinybus::Error::failed("live identity generation failed"))?;

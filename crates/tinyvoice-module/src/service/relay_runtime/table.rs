@@ -72,7 +72,7 @@ impl Turns {
         }));
         if state.leases.len()>=usize::from(limit) { return Err(tinybus::Error::failed("relay reservation capacity is exhausted")); }
         loop {
-            let handle=RelayHandle { id:super::super::live::table::random_id()? };
+            let handle=RelayHandle { id:super::super::live::random_id()? };
             if let std::collections::hash_map::Entry::Vacant(entry)=state.leases.entry(handle.clone()) {
                 entry.insert(Arc::new(Lease::new()));return Ok(RelayStatus { handle,state:RelayState::Reserved });
             }
@@ -134,7 +134,7 @@ async fn stop(lease:&Lease)->tinybus::Result<()> {
         match tokio::time::timeout(Duration::from_secs(2),&mut task.0).await {
             Ok(Ok(()))=>{},
             Ok(Err(_))=>return Err(unavailable()),
-            Err(_)=>{task.0.abort();let _=task.0.await;return Err(tinybus::Error::failed("relay cleanup exceeded its deadline"));}
+            Err(_)=>{task.0.abort();let _=(&mut task.0).await;return Err(tinybus::Error::failed("relay cleanup exceeded its deadline"));}
         }
     }
     if !lease.phase.lock().map_err(|_| unavailable())?.cleanup_confirmed { return Err(tinybus::Error::failed("relay host cleanup was not acknowledged")); }
