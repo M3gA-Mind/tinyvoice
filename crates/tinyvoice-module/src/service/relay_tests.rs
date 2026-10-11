@@ -1,3 +1,5 @@
+//! Relay serialization bounds and reply-amplification regression fixtures.
+
 use super::*;
 
 #[test]

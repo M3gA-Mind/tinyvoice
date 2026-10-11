@@ -126,3 +126,16 @@ fn module_documentation_tracks_the_declared_contract() {
         );
     }
 }
+
+#[test]
+fn host_migration_instructions_match_current_module_contract() {
+    let documentation = include_str!("../../../docs/specs/module-capture.md");
+    assert!(documentation.contains(&format!(
+        "checks all {} declared members",
+        super::METHODS.len()
+    )));
+    assert!(documentation.contains(&format!(
+        "current contract {}.{}",
+        CONTRACT_VERSION.0, CONTRACT_VERSION.1
+    )));
+}
