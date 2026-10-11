@@ -36,7 +36,13 @@ if cargo metadata --offline --format-version 1 --manifest-path \
   echo "expected the stale tinyvoice version requirement to fail" >&2
   exit 1
 fi
-grep -q 'failed to select a version' "$fixture/stale-metadata.err"
+if ! grep -Fq 'tinyvoice' "$fixture/stale-metadata.err" \
+  || ! grep -Fq '0.1.3' "$fixture/stale-metadata.err" \
+  || ! grep -Fq '0.2.0' "$fixture/stale-metadata.err"; then
+  echo "unexpected stale dependency resolution error:" >&2
+  cat "$fixture/stale-metadata.err" >&2
+  exit 1
+fi
 
 "$repo_root/.github/scripts/update-module-dependency-version.sh" "$fixture" 0.2.0
 cargo metadata --offline --format-version 1 --manifest-path \
