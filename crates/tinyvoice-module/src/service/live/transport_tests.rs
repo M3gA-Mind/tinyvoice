@@ -8,7 +8,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 use tinybus::{broker::Broker, transport::memory::MemoryBus};
-use tinyvoice_bus::live::{TransportFrame, transport::LiveBindTransportRequest};
+use tinyvoice_bus::live::{ServerFrame,TransportFrame, transport::LiveBindTransportRequest};
 
 #[derive(Clone, Default)]
 struct Socket {
@@ -107,11 +107,11 @@ async fn lost_delivery_reply_reuses_identity_and_preserves_order_without_duplica
     };
     let (sessions, _module, _host, handle, lease) = fixture(socket.clone()).await?;
     let effects = vec![
-        LiveOutput::JsonServerFrame {
+        LiveOutput::Json {
             frame: ServerFrame::Transcript {
                 role: TranscriptRole::Agent,
                 text: "complete".into(),
-                final_transcript: true,
+                is_final: true,
             },
         },
         LiveOutput::Persist {
