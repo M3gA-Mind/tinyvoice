@@ -22,6 +22,11 @@ struct Brain {
     admission_cancel: Arc<Notify>,
     admission_exited: Arc<Notify>,
     admission_stopped: Arc<std::sync::atomic::AtomicBool>,
+    lose_apply_ack: bool,
+    hold_apply: bool,
+    finish_entered: Arc<Notify>,
+    finish_release: Arc<Notify>,
+    wait_finish_release: bool,
     hold_start: bool,
     hold_finish: bool,
     reject_authority: bool,
@@ -121,6 +126,12 @@ impl Brain {
                 .extend(request.effects);
         }
         self.applied.notify_one();
+        if self.hold_apply {
+            std::future::pending::<()>().await;
+        }
+        if self.lose_apply_ack {
+            return Err(tinybus::Error::failed("fixture lost commit acknowledgment"));
+        }
         Ok(ApplyRelayEffectsReply { applied: true })
     }
     async fn finish_relay_brain(
@@ -130,6 +141,10 @@ impl Brain {
         if self.authorities.lock().await.get(&request.context_token) != Some(&request.invocation_id)
         {
             return Ok(FinishRelayBrainReply { finished: false });
+        }
+        self.finish_entered.notify_one();
+        if self.wait_finish_release {
+            self.finish_release.notified().await;
         }
         if self.hold_finish {
             std::future::pending::<()>().await;
@@ -611,5 +626,113 @@ async fn overall_deadline_finishes_queued_and_active_turns_without_inventing_nat
             turns.release(first).await?;
         }
     }
+    Ok(())
+}
+
+#[tokio::test(start_paused = true)]
+async fn exhausted_commit_acknowledgments_do_not_emit_contradictory_new_effects()
+-> tinybus::Result<()> {
+    let brain = Brain {
+        lose_apply_ack: true,
+        ..Brain::default()
+    };
+    brain.events.lock().await.insert(
+        "committed".into(),
+        VecDeque::from([RelayBrainEvent::Complete {
+            outcome: RelayOutcome::Success {
+                text: "answer".into(),
+            },
+        }]),
+    );
+    let (turns, _module, _host) = fixture(brain.clone(), 1).await?;
+    let handle = turns.reserve()?.handle;
+    start(&turns, &brain, request(handle.clone(), "committed", 1000)).await?;
+    brain.finished.notified().await;
+    assert_eq!(
+        brain.effects.lock().await["committed"],
+        [
+            RelayEffect::Delta {
+                text: "answer".into()
+            },
+            RelayEffect::Done
+        ]
+    );
+    assert_eq!(brain.committed.lock().await.len(), 1);
+    turns.release(handle).await?;
+    Ok(())
+}
+
+#[tokio::test(start_paused = true)]
+async fn native_execution_slot_is_retained_until_finish_confirms_stopped_work()
+-> tinybus::Result<()> {
+    let brain = Brain {
+        wait_finish_release: true,
+        ..Brain::default()
+    };
+    brain.events.lock().await.insert(
+        "first".into(),
+        VecDeque::from([RelayBrainEvent::Complete {
+            outcome: RelayOutcome::Success {
+                text: "answer".into(),
+            },
+        }]),
+    );
+    let (turns, _module, _host) = fixture(brain.clone(), 1).await?;
+    let first = turns.reserve()?.handle;
+    start(&turns, &brain, request(first.clone(), "first", 1000)).await?;
+    brain.finish_entered.notified().await;
+    let second = turns.reserve()?.handle;
+    start(&turns, &brain, request(second.clone(), "second", 1000)).await?;
+    tokio::time::advance(Duration::from_millis(100)).await;
+    for _ in 0..20 {
+        tokio::task::yield_now().await;
+    }
+    assert!(!brain.invocations.lock().await.contains_key("second"));
+    brain.finish_release.notify_one();
+    brain.finished.notified().await;
+    for _ in 0..100 {
+        if brain.invocations.lock().await.contains_key("second") {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert!(brain.invocations.lock().await.contains_key("second"));
+    turns.release(first).await?;
+    brain.finish_release.notify_one();
+    turns.release(second).await?;
+    Ok(())
+}
+
+#[tokio::test(start_paused = true)]
+async fn overall_deadline_cancels_stalled_effect_delivery_before_callback_retry_budget()
+-> tinybus::Result<()> {
+    let brain = Brain {
+        hold_apply: true,
+        ..Brain::default()
+    };
+    brain.events.lock().await.insert(
+        "deadline".into(),
+        VecDeque::from([RelayBrainEvent::Delta {
+            text: "selected".into(),
+        }]),
+    );
+    let (turns, _module, _host) = fixture(brain.clone(), 1).await?;
+    let handle = turns.reserve()?.handle;
+    let mut req = request(handle.clone(), "deadline", 100);
+    req.turn_timeout_ms = 200;
+    start(&turns, &brain, req).await?;
+    brain.applied.notified().await;
+    tokio::time::timeout(Duration::from_millis(350), brain.finished.notified())
+        .await
+        .map_err(|_| {
+            tinybus::Error::failed("overall deadline was suspended during effect delivery")
+        })?;
+    assert_eq!(
+        brain.effects.lock().await["deadline"],
+        [RelayEffect::Delta {
+            text: "selected".into()
+        }]
+    );
+    turns.release(handle).await?;
     Ok(())
 }
