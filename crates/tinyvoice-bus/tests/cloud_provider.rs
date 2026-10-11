@@ -176,3 +176,15 @@ fn realtime_debug_does_not_expose_connection_credentials() {
         assert!(debug.contains("[REDACTED]"));
     }
 }
+
+#[test]
+fn provider_errors_preserve_categories_independently_of_display_text() -> Result<(), serde_json::Error> {
+    use tinyvoice_bus::provider::{ProviderError, ProviderErrorKind};
+    for kind in [ProviderErrorKind::InvalidInput, ProviderErrorKind::Unavailable, ProviderErrorKind::SessionExpired, ProviderErrorKind::ApiKeyRejected, ProviderErrorKind::Transport, ProviderErrorKind::InvalidResponse] {
+        let error = ProviderError { kind, message: "same human-readable detail".into() };
+        let decoded: ProviderError = serde_json::from_value(serde_json::to_value(&error)?)?;
+        assert_eq!(decoded.kind, kind);
+        assert_eq!(decoded.to_string(), "same human-readable detail");
+    }
+    Ok(())
+}
