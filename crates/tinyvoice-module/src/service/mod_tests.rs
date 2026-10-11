@@ -1022,3 +1022,13 @@ async fn relay_preparation_preserves_text_history_and_readback_boundaries() {
         ])
     );
 }
+
+#[tokio::test]
+async fn relay_rejects_aggregate_text_before_amplifying_a_reply() {
+    let request = tinyvoice_bus::relay::RelayTurnRequest {
+        messages: vec![serde_json::json!({"role":"user","content":"x".repeat(8 * 1024 * 1024)})],
+        readback_prefix: String::new(),
+    };
+    let result = super::VoiceService::default().prepare_relay_turn(request).await;
+    assert!(result.is_err(), "an accepted single-frame request must not amplify into an oversized reply");
+}
