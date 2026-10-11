@@ -99,3 +99,61 @@ fn a_host_provider_dispatches_without_voice_implementation_or_runtime() {
         }))
     );
 }
+
+#[test]
+fn provider_values_preserve_audio_hints_and_session_metadata() -> Result<(), serde_json::Error> {
+    let input = TranscriptionRequest {
+        audio_base64: "YXVkaW8=".into(),
+        model: Some("model".into()),
+        language: Some("en".into()),
+        mime_type: Some("audio/wav".into()),
+        file_name: Some("voice.wav".into()),
+    };
+    assert_eq!(
+        serde_json::from_value::<TranscriptionRequest>(serde_json::to_value(&input)?)?,
+        input
+    );
+    let speech = SynthesisRequest {
+        text: "reply".into(),
+        voice_id: Some("voice".into()),
+        model_id: Some("speech".into()),
+        output_format: Some("mp3".into()),
+        voice_settings: Some(serde_json::json!({"stability": 0.5, "future_option": true})),
+    };
+    assert_eq!(
+        serde_json::from_value::<SynthesisRequest>(serde_json::to_value(&speech)?)?,
+        speech
+    );
+    for request in [
+        RealtimeRequest::VoiceAgent,
+        RealtimeRequest::GeminiLive {
+            options: serde_json::json!({"voice": "Puck"}),
+        },
+    ] {
+        assert_eq!(
+            serde_json::from_value::<RealtimeRequest>(serde_json::to_value(&request)?)?,
+            request
+        );
+    }
+    for session in [
+        RealtimeSession::VoiceAgent {
+            signed_url: "wss://voice.invalid/signed".into(),
+            agent_id: "agent".into(),
+            user_token: "short-lived".into(),
+        },
+        RealtimeSession::GeminiLive {
+            ws_url: "wss://voice.invalid/relay".into(),
+            session_id: "session".into(),
+            model: "gemini".into(),
+        },
+    ] {
+        assert_eq!(
+            serde_json::from_value::<RealtimeSession>(serde_json::to_value(&session)?)?,
+            session
+        );
+    }
+    assert!(
+        serde_json::from_value::<RealtimeSession>(serde_json::json!({"kind": "unknown"})).is_err()
+    );
+    Ok(())
+}
