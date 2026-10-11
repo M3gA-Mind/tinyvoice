@@ -3,17 +3,14 @@
 use super::super::table::Sessions;
 use super::*;
 use std::collections::HashSet;
-use std::sync::{
-    Mutex,
-    atomic::{AtomicUsize, Ordering},
-};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tinybus::{broker::Broker, transport::memory::MemoryBus};
 use tinyvoice_bus::live::{ServerFrame, TransportFrame, transport::LiveBindTransportRequest};
 
 #[derive(Clone, Default)]
 struct Socket {
-    committed: Arc<Mutex<HashSet<String>>>,
-    effects: Arc<Mutex<Vec<LiveOutput>>>,
+    committed: Arc<tokio::sync::Mutex<HashSet<String>>>,
+    effects: Arc<tokio::sync::Mutex<Vec<LiveOutput>>>,
     attempts: Arc<AtomicUsize>,
     polls: Arc<tokio::sync::Mutex<usize>>,
     closes: Arc<AtomicUsize>,
@@ -40,16 +37,8 @@ impl Socket {
         request: DeliverLiveEffectsRequest,
     ) -> tinybus::Result<DeliverLiveEffectsReply> {
         let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
-        if self
-            .committed
-            .lock()
-            .map_err(|_| tinybus::Error::failed("fixture lock"))?
-            .insert(request.delivery_id)
-        {
-            self.effects
-                .lock()
-                .map_err(|_| tinybus::Error::failed("fixture lock"))?
-                .extend(request.outputs);
+        if self.committed.lock().await.insert(request.delivery_id) {
+            self.effects.lock().await.extend(request.outputs);
         }
         if self.first_reply_lost && attempt == 0 {
             return Err(tinybus::Error::failed(
@@ -135,21 +124,8 @@ async fn lost_delivery_reply_reuses_identity_and_preserves_order_without_duplica
         .await
         .map_err(|_| tinybus::Error::failed("fixture deadline"))?;
     assert_eq!(socket.attempts.load(Ordering::SeqCst), 2);
-    assert_eq!(
-        *socket
-            .effects
-            .lock()
-            .map_err(|_| tinybus::Error::failed("fixture lock"))?,
-        effects
-    );
-    assert_eq!(
-        socket
-            .committed
-            .lock()
-            .map_err(|_| tinybus::Error::failed("fixture lock"))?
-            .len(),
-        1
-    );
+    assert_eq!(*socket.effects.lock().await, effects);
+    assert_eq!(socket.committed.lock().await.len(), 1);
     sessions.release(handle).await?;
     Ok(())
 }

@@ -117,7 +117,7 @@ impl tinyagents_live::tinyliveagents::LiveProvider for FailingProvider {
         "fixture"
     }
     fn capabilities(&self) -> tinyagents_live::tinyliveagents::Capabilities {
-        self.0.clone()
+        self.0
     }
     async fn connect(
         &self,
