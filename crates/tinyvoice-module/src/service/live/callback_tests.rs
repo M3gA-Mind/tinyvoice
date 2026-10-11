@@ -15,10 +15,22 @@ struct Authority {
     revoked: Arc<AtomicBool>,
     malformed: Arc<AtomicBool>,
     seen: Arc<Mutex<Vec<ExecuteLiveToolRequest>>>,
+    hanging: Arc<AtomicBool>,
+    entered: Arc<tokio::sync::Notify>,
+    cancel_execution: Arc<tokio::sync::Notify>,
+    cancelled: Arc<tokio::sync::Notify>,
 }
 
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.LiveTools")]
 impl Authority {
+    async fn cancel_live_tool(&self, request: Value) -> tinybus::Result<Value> {
+        if request.get("context_token").and_then(Value::as_str) != Some("known-context") {
+            return Ok(json!({"cancelled": false}));
+        }
+        self.cancel_execution.notify_one();
+        self.cancelled.notify_one();
+        Ok(json!({"cancelled": true}))
+    }
     async fn execute_live_tool(
         &self,
         request: ExecuteLiveToolRequest,
@@ -30,6 +42,11 @@ impl Authority {
             .lock()
             .map_err(|_| tinybus::Error::failed("fixture lock"))?
             .push(request);
+        if self.hanging.load(Ordering::SeqCst) {
+            self.entered.notify_one();
+            self.cancel_execution.notified().await;
+            return Err(tinybus::Error::failed("host invocation cancelled"));
+        }
         if self.malformed.load(Ordering::SeqCst) {
             return Ok(ExecuteLiveToolReply {
                 result: json!({"invented_success": true}),
@@ -166,5 +183,31 @@ async fn oversized_tool_arguments_fail_before_calling_host_executor() -> anyhow:
             .map_err(|_| anyhow::anyhow!("fixture lock"))?
             .is_empty()
     );
+    Ok(())
+}
+
+#[tokio::test(start_paused = true)]
+async fn dropping_native_callback_notifies_host_to_cancel_its_known_invocation()
+-> anyhow::Result<()> {
+    let (tool, authority, _host) = fixture().await?;
+    authority.hanging.store(true, Ordering::SeqCst);
+    let call = tokio::spawn(async move {
+        tool.execute(
+            &(),
+            CallId::new("cancelled-provider-call"),
+            json!({}),
+            ToolCallOptions::default(),
+            &context(),
+        )
+        .await
+    });
+    authority.entered.notified().await;
+    call.abort();
+    let _ = call.await;
+    tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        authority.cancelled.notified(),
+    )
+    .await?;
     Ok(())
 }
