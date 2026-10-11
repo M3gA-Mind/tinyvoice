@@ -19,6 +19,14 @@ static-link = []
 native-hotkeys = []
 
 [dependencies]
+# Native generic provider/tool-loop execution belongs inside the compiled module.
+# The recorded canonical TinyAgents submodule supplies its own recursive libraries.
+tinyagents-live = { path = "../../vendor/tinyagents/crates/tinyagents-live" }
+tinyagents-harness = { path = "../../vendor/tinyagents/crates/tinyagents-harness" }
+tinytools = { path = "../../vendor/tinyagents/vendor/tinytools/crates/tinytools" }
+async-trait = "0.1"
+anyhow = "1"
+
 # Opaque native recording/output leases must not rebind after a module reload.
 getrandom = "0.4"
 

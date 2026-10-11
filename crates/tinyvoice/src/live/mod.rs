@@ -46,3 +46,7 @@ pub fn prepare_input(request: PrepareLiveInputRequest) -> Result<PreparedLiveInp
         TransportFrame::Other => PreparedLiveInput::Transport(LiveTransportAction::Ignore),
     })
 }
+
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod tests;
