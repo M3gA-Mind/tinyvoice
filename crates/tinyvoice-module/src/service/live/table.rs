@@ -129,7 +129,7 @@ impl Default for Sessions {
 }
 
 impl Sessions {
-    pub(in crate::service) fn with_connection(connection: tinybus::Connection) -> Self {
+    pub(in crate::service) fn with_connection(connection: &tinybus::Connection) -> Self {
         Self {
             connection: Mutex::new(Some(connection.downgrade())),
             closed: AtomicBool::new(false),

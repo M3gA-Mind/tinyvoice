@@ -248,6 +248,7 @@ fn callback_cancellation_guard_can_drop_outside_its_runtime_context() -> anyhow:
         let (tool, _authority, host) = fixture().await?;
         Ok::<_, tinybus::Error>((
             InvocationGuard {
+                runtime: tokio::runtime::Handle::current(),
                 proxy: tool.proxy.clone(),
                 request: Some(CancelLiveToolRequest {
                     context_token: "known-context".into(),

@@ -721,7 +721,7 @@ async fn setup(connection: Connection) -> TinyBusResult<()> {
         .serve_at(
             names::OBJECT_PATH.try_into()?,
             VoiceService {
-                live: std::sync::Arc::new(live::Sessions::with_connection(connection.clone())),
+                live: std::sync::Arc::new(live::Sessions::with_connection(&connection)),
                 ..VoiceService::default()
             },
         )

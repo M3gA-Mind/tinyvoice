@@ -84,7 +84,7 @@ async fn fixture(
     host.serve_at("/test/Transport".try_into()?, socket).await?;
     host.request_name("ai.test.Transport").await?;
     let module = tinybus::Connection::connect(bus.connect().await?).await?;
-    let sessions = Sessions::with_connection(module.clone());
+    let sessions = Sessions::with_connection(&module);
     let handle = sessions.reserve()?.handle;
     let lease = sessions.lease(&handle)?;
     sessions.bind_transport(LiveBindTransportRequest {
