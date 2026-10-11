@@ -380,3 +380,7 @@ pub struct CancelLiveToolReply {
     /// False for an unknown invocation; never invent a successful cancellation.
     pub cancelled: bool,
 }
+
+#[cfg(test)]
+#[path = "session_tests.rs"]
+mod tests;

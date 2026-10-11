@@ -117,3 +117,7 @@ macro_rules! redacted_debug {
 redacted_debug!(ReadLiveInputRequest);
 redacted_debug!(DeliverLiveEffectsRequest);
 redacted_debug!(CloseLiveTransportRequest);
+
+#[cfg(test)]
+#[path = "transport_tests.rs"]
+mod tests;
