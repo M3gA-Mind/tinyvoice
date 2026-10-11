@@ -5,5 +5,6 @@ mod callback;
 mod prepare;
 mod projection;
 mod table;
+mod transport;
 
 pub(super) use table::Sessions;

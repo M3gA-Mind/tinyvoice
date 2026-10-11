@@ -89,7 +89,9 @@ impl Lease {
         // Register before testing the sticky flag so cancellation cannot land
         // in the gap between the flag check and the await.
         notified.as_mut().enable();
-        if !self.cancelled.load(Ordering::SeqCst) { notified.await; }
+        if !self.cancelled.load(Ordering::SeqCst) {
+            notified.await;
+        }
     }
 
     pub(super) fn status(&self, handle: LiveHandle) -> tinybus::Result<LiveStatus> {
@@ -142,8 +144,11 @@ impl Sessions {
         }
         leases.retain(|_, lease| {
             lease.phase.lock().is_ok_and(|phase| {
-                let keep = phase.state != LiveState::Reserved || lease.created.elapsed() < RESERVATION_TTL;
-                if !keep { lease.cancel(); }
+                let keep =
+                    phase.state != LiveState::Reserved || lease.created.elapsed() < RESERVATION_TTL;
+                if !keep {
+                    lease.cancel();
+                }
                 keep
             })
         });
@@ -224,42 +229,81 @@ impl Sessions {
         })
     }
 
-    pub(in crate::service) async fn send(&self, request: LiveSendRequest) -> tinybus::Result<LiveStatus> {
+    pub(in crate::service) async fn send(
+        &self,
+        request: LiveSendRequest,
+    ) -> tinybus::Result<LiveStatus> {
         let lease = self.lease(&request.handle)?;
         ensure_manual_transport(&lease)?;
         send_lease(&lease, request).await
     }
 
-    pub(in crate::service) async fn read(&self, request: LiveReadRequest) -> tinybus::Result<LiveBatch> {
+    pub(in crate::service) async fn read(
+        &self,
+        request: LiveReadRequest,
+    ) -> tinybus::Result<LiveBatch> {
         let lease = self.lease(&request.handle)?;
         ensure_manual_transport(&lease)?;
         read_lease(&lease, request).await
     }
 
-    pub(in crate::service) fn bind_transport(&self, request: tinyvoice_bus::live::transport::LiveBindTransportRequest) -> tinybus::Result<LiveStatus> {
+    pub(in crate::service) fn bind_transport(
+        &self,
+        request: tinyvoice_bus::live::transport::LiveBindTransportRequest,
+    ) -> tinybus::Result<LiveStatus> {
         if !super::super::relay::fits(&request.port, 8 * 1024) {
-            return Err(tinybus::Error::failed("live transport endpoint exceeds its size limit"));
+            return Err(tinybus::Error::failed(
+                "live transport endpoint exceeds its size limit",
+            ));
         }
         let lease = self.lease(&request.handle)?;
-        let connection = self.connection.lock().map_err(|_| unavailable())?.clone()
-            .ok_or_else(|| tinybus::Error::failed("live transport callback connection is unavailable"))?;
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| unavailable())?
+            .clone()
+            .ok_or_else(|| {
+                tinybus::Error::failed("live transport callback connection is unavailable")
+            })?;
         // Validate the endpoint grammar before claiming transport ownership.
-        connection.proxy(request.port.bus_name.as_str(), request.port.object_path.as_str(), tinyvoice_bus::live::transport::INTERFACE)?;
+        connection.proxy(
+            request.port.bus_name.as_str(),
+            request.port.object_path.as_str(),
+            tinyvoice_bus::live::transport::INTERFACE,
+        )?;
         let mut phase = lease.phase.lock().map_err(|_| unavailable())?;
         if let Some(port) = &phase.transport {
             return if port == &request.port {
-                Ok(LiveStatus { handle: request.handle, state: phase.state })
-            } else { Err(tinybus::Error::failed("live transport was already bound to a different endpoint")) };
+                Ok(LiveStatus {
+                    handle: request.handle,
+                    state: phase.state,
+                })
+            } else {
+                Err(tinybus::Error::failed(
+                    "live transport was already bound to a different endpoint",
+                ))
+            };
         }
-        if phase.state != LiveState::Reserved || lease.cancelled.load(Ordering::SeqCst) || self.closed.load(Ordering::SeqCst) {
-            return Err(tinybus::Error::failed("live transport must bind to an open reservation"));
+        if phase.state != LiveState::Reserved
+            || lease.cancelled.load(Ordering::SeqCst)
+            || self.closed.load(Ordering::SeqCst)
+        {
+            return Err(tinybus::Error::failed(
+                "live transport must bind to an open reservation",
+            ));
         }
         phase.transport = Some(request.port.clone());
         phase.transport_cleanup_confirmed = false;
         phase.transport_task = Some(tokio::spawn(super::transport::run(
-            lease.clone(), request.handle.clone(), request.port, connection,
+            lease.clone(),
+            request.handle.clone(),
+            request.port,
+            connection,
         )));
-        Ok(LiveStatus { handle: request.handle, state: phase.state })
+        Ok(LiveStatus {
+            handle: request.handle,
+            state: phase.state,
+        })
     }
 
     pub(in crate::service) async fn release(
@@ -324,7 +368,10 @@ async fn stop_lease(lease: &Lease) -> tinybus::Result<()> {
         let mut phase = lease.phase.lock().map_err(|_| unavailable())?;
         phase.sender = None;
         phase.state = LiveState::Closed;
-        (phase.task.take().map(OwnedTask), phase.transport_task.take().map(OwnedTask))
+        (
+            phase.task.take().map(OwnedTask),
+            phase.transport_task.take().map(OwnedTask),
+        )
     };
     // Own both abort guards before awaiting either cleanup future.
     let (provider, transport) = tokio::join!(wait_owned(provider), wait_owned(transport));
@@ -332,7 +379,9 @@ async fn stop_lease(lease: &Lease) -> tinybus::Result<()> {
     transport?;
     let phase = lease.phase.lock().map_err(|_| unavailable())?;
     if !phase.cleanup_confirmed || !phase.transport_cleanup_confirmed {
-        return Err(tinybus::Error::failed("live native tasks stopped but host context cleanup was not acknowledged"));
+        return Err(tinybus::Error::failed(
+            "live native tasks stopped but host context cleanup was not acknowledged",
+        ));
     }
     Ok(())
 }
@@ -355,9 +404,15 @@ async fn wait_owned(task: Option<OwnedTask>) -> tinybus::Result<()> {
             Err(_) => {
                 owned.0.abort();
                 let _ = (&mut owned.0).await;
-                return Err(tinybus::Error::failed("live worker cleanup exceeded its deadline"));
+                return Err(tinybus::Error::failed(
+                    "live worker cleanup exceeded its deadline",
+                ));
             }
-            Ok(Err(_)) => return Err(tinybus::Error::failed("live worker terminated unexpectedly")),
+            Ok(Err(_)) => {
+                return Err(tinybus::Error::failed(
+                    "live worker terminated unexpectedly",
+                ));
+            }
             Ok(Ok(())) => {}
         }
     }
@@ -384,7 +439,8 @@ impl Drop for Sessions {
                     task.abort();
                 }
                 if let Ok(mut phase) = lease.phase.lock()
-                    && let Some(task) = phase.transport_task.take() {
+                    && let Some(task) = phase.transport_task.take()
+                {
                     task.abort();
                 }
             }
@@ -409,109 +465,125 @@ pub(super) fn random_id() -> tinybus::Result<String> {
 }
 
 fn ensure_manual_transport(lease: &Lease) -> tinybus::Result<()> {
-    if lease.phase.lock().map_err(|_| unavailable())?.transport.is_some() {
-        Err(tinybus::Error::failed("bound live transport owns input and output"))
-    } else { Ok(()) }
+    if lease
+        .phase
+        .lock()
+        .map_err(|_| unavailable())?
+        .transport
+        .is_some()
+    {
+        Err(tinybus::Error::failed(
+            "bound live transport owns input and output",
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 /// Native input admission shared by the bus adapter and owned transport pump.
-pub(super) async fn send_lease(lease: &Lease, request: LiveSendRequest) -> tinybus::Result<LiveStatus> {
-        use base64::Engine as _;
-        let sender = {
-            let phase = lease.phase.lock().map_err(|_| unavailable())?;
-            phase
-                .sender
-                .clone()
-                .ok_or_else(|| tinybus::Error::failed("live session is not running"))?
-        };
-        let command = match request.command {
-            LiveCommand::Audio { pcm16_base64 } => {
-                if pcm16_base64.len() > MAX_AUDIO_BYTES.div_ceil(3) * 4 {
-                    return Err(tinybus::Error::failed("live audio exceeds its input limit"));
-                }
-                let pcm = base64::engine::general_purpose::STANDARD
-                    .decode(pcm16_base64)
-                    .map_err(|_| tinybus::Error::failed("invalid live audio encoding"))?;
-                if pcm.len() > MAX_AUDIO_BYTES || pcm.len() % 2 != 0 {
-                    return Err(tinybus::Error::failed(
-                        "live PCM16 audio exceeds its limit or has a partial sample",
-                    ));
-                }
-                tinyagents_live::tinyliveagents::ClientCommand::Audio(pcm.into())
+pub(super) async fn send_lease(
+    lease: &Lease,
+    request: LiveSendRequest,
+) -> tinybus::Result<LiveStatus> {
+    use base64::Engine as _;
+    let sender = {
+        let phase = lease.phase.lock().map_err(|_| unavailable())?;
+        phase
+            .sender
+            .clone()
+            .ok_or_else(|| tinybus::Error::failed("live session is not running"))?
+    };
+    let command = match request.command {
+        LiveCommand::Audio { pcm16_base64 } => {
+            if pcm16_base64.len() > MAX_AUDIO_BYTES.div_ceil(3) * 4 {
+                return Err(tinybus::Error::failed("live audio exceeds its input limit"));
             }
-            LiveCommand::Text { text } => {
-                if text.len() > MAX_TEXT_BYTES {
-                    return Err(tinybus::Error::failed("live text exceeds its input limit"));
-                }
-                tinyagents_live::tinyliveagents::ClientCommand::Text(text)
+            let pcm = base64::engine::general_purpose::STANDARD
+                .decode(pcm16_base64)
+                .map_err(|_| tinybus::Error::failed("invalid live audio encoding"))?;
+            if pcm.len() > MAX_AUDIO_BYTES || pcm.len() % 2 != 0 {
+                return Err(tinybus::Error::failed(
+                    "live PCM16 audio exceeds its limit or has a partial sample",
+                ));
             }
-            LiveCommand::Interrupt => tinyagents_live::tinyliveagents::ClientCommand::Interrupt,
-            LiveCommand::Stop => tinyagents_live::tinyliveagents::ClientCommand::Close,
-        };
-        tokio::time::timeout(std::time::Duration::from_secs(1), sender.send(command))
-            .await
-            .map_err(|_| tinybus::Error::failed("live command queue did not accept input"))?
-            .map_err(|error| tinybus::Error::failed(error.to_string()))?;
-        lease.status(request.handle)
+            tinyagents_live::tinyliveagents::ClientCommand::Audio(pcm.into())
+        }
+        LiveCommand::Text { text } => {
+            if text.len() > MAX_TEXT_BYTES {
+                return Err(tinybus::Error::failed("live text exceeds its input limit"));
+            }
+            tinyagents_live::tinyliveagents::ClientCommand::Text(text)
+        }
+        LiveCommand::Interrupt => tinyagents_live::tinyliveagents::ClientCommand::Interrupt,
+        LiveCommand::Stop => tinyagents_live::tinyliveagents::ClientCommand::Close,
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(1), sender.send(command))
+        .await
+        .map_err(|_| tinybus::Error::failed("live command queue did not accept input"))?
+        .map_err(|error| tinybus::Error::failed(error.to_string()))?;
+    lease.status(request.handle)
 }
 
 /// Ordered replayable output shared by manual and module-owned delivery.
-pub(super) async fn read_lease(lease: &Lease, request: LiveReadRequest) -> tinybus::Result<LiveBatch> {
-        let mut reader = lease.reader.lock().await;
-        if let Some(ack) = request.acknowledged_batch {
-            if reader
-                .pending
-                .as_ref()
-                .is_some_and(|batch| batch.batch == ack)
-            {
-                reader.pending = None;
-                reader.last_acknowledged = ack;
-            } else if ack != reader.last_acknowledged {
+pub(super) async fn read_lease(
+    lease: &Lease,
+    request: LiveReadRequest,
+) -> tinybus::Result<LiveBatch> {
+    let mut reader = lease.reader.lock().await;
+    if let Some(ack) = request.acknowledged_batch {
+        if reader
+            .pending
+            .as_ref()
+            .is_some_and(|batch| batch.batch == ack)
+        {
+            reader.pending = None;
+            reader.last_acknowledged = ack;
+        } else if ack != reader.last_acknowledged {
+            return Err(tinybus::Error::failed(
+                "live batch acknowledgement is stale or unknown",
+            ));
+        }
+    }
+    if let Some(batch) = &reader.pending {
+        return Ok(batch.clone());
+    }
+    let mut outputs = Vec::new();
+    for _ in 0..MAX_GROUPS {
+        let group = reader.carry.take().or_else(|| reader.rx.try_recv().ok());
+        let Some(group) = group else { break };
+        let before = outputs.len();
+        outputs.extend(group);
+        if !super::super::relay::fits(&outputs, MAX_BATCH_BYTES - 4096) {
+            reader.carry = Some(outputs.split_off(before));
+            if outputs.is_empty() {
                 return Err(tinybus::Error::failed(
-                    "live batch acknowledgement is stale or unknown",
+                    "live event group exceeds its output limit",
                 ));
             }
+            break;
         }
-        if let Some(batch) = &reader.pending {
-            return Ok(batch.clone());
-        }
-        let mut outputs = Vec::new();
-        for _ in 0..MAX_GROUPS {
-            let group = reader.carry.take().or_else(|| reader.rx.try_recv().ok());
-            let Some(group) = group else { break };
-            let before = outputs.len();
-            outputs.extend(group);
-            if !super::super::relay::fits(&outputs, MAX_BATCH_BYTES - 4096) {
-                reader.carry = Some(outputs.split_off(before));
-                if outputs.is_empty() {
-                    return Err(tinybus::Error::failed(
-                        "live event group exceeds its output limit",
-                    ));
-                }
-                break;
-            }
-        }
-        let state = lease.status(request.handle.clone())?.state;
-        if outputs.is_empty() {
-            return Ok(LiveBatch {
-                handle: request.handle,
-                batch: reader.last_acknowledged,
-                state,
-                outputs,
-            });
-        }
-        let batch = LiveBatch {
+    }
+    let state = lease.status(request.handle.clone())?.state;
+    if outputs.is_empty() {
+        return Ok(LiveBatch {
             handle: request.handle,
-            batch: reader.next_batch,
+            batch: reader.last_acknowledged,
             state,
             outputs,
-        };
-        reader.next_batch = reader
-            .next_batch
-            .checked_add(1)
-            .ok_or_else(|| tinybus::Error::failed("live batch sequence is exhausted"))?;
-        reader.pending = Some(batch.clone());
-        Ok(batch)
+        });
+    }
+    let batch = LiveBatch {
+        handle: request.handle,
+        batch: reader.next_batch,
+        state,
+        outputs,
+    };
+    reader.next_batch = reader
+        .next_batch
+        .checked_add(1)
+        .ok_or_else(|| tinybus::Error::failed("live batch sequence is exhausted"))?;
+    reader.pending = Some(batch.clone());
+    Ok(batch)
 }
 
 /// Bound reservations cannot retain an idle client forever without startup.

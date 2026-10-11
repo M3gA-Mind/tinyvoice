@@ -1,7 +1,10 @@
 //! Mechanical client socket and persistence callback contract for the module pump.
 
+use super::{
+    TransportFrame,
+    session::{LiveHandle, LiveOutput},
+};
 use serde::{Deserialize, Serialize};
-use super::{TransportFrame, session::{LiveHandle, LiveOutput}};
 
 /// Host interface providing mechanical socket/persistence callbacks.
 pub const INTERFACE: &str = "ai.tinyhumans.tinyvoice.LiveTransport";
@@ -25,8 +28,11 @@ pub struct LiveTransportPort {
 
 impl std::fmt::Debug for LiveTransportPort {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LiveTransportPort").field("bus_name", &self.bus_name)
-            .field("object_path", &self.object_path).field("context_token", &"[redacted]").finish()
+        f.debug_struct("LiveTransportPort")
+            .field("bus_name", &self.bus_name)
+            .field("object_path", &self.object_path)
+            .field("context_token", &"[redacted]")
+            .finish()
     }
 }
 
