@@ -421,3 +421,7 @@ impl Drop for Sessions {
 fn unavailable() -> tinybus::Error {
     tinybus::Error::failed("live session state is unavailable")
 }
+
+#[cfg(test)]
+#[path = "table_tests.rs"]
+mod tests;

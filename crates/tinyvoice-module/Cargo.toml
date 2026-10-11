@@ -81,7 +81,7 @@ broken_intra_doc_links = "warn"
 private_intra_doc_links = "warn"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "test-util"] }
 
 [patch.crates-io]
 tinybus = { path = "../../vendor/tinybus/crates/tinybus" }
