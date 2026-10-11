@@ -80,7 +80,7 @@ jobs:
       - name: Require 90% line coverage in every source file
         run: .github/scripts/check-file-coverage.sh 90 coverage.json
 
-      - name: Require 90% live module file coverage
+      - name: Require 90% voice runtime file coverage
         run: .github/scripts/check-live-module-coverage.sh 90 live-module-coverage.json
 
       - name: Upload coverage report

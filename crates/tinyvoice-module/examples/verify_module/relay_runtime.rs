@@ -175,95 +175,7 @@ pub(super) async fn verify(
         return Err(io::Error::other("relay scheduling limits changed").into());
     }
     for context in ["foreground", "delayed", "revoked"] {
-        let reserved: RelayStatus = proxy.call("RelayReserve", ()).await?;
-        brain
-            .expected
-            .lock()
-            .await
-            .insert(context.into(), reserved.handle.id.clone());
-        let request = RelayStartRequest {
-            handle: reserved.handle.clone(),
-            port: RelayHostPort {
-                bus_name: "ai.test.RelayHost".into(),
-                object_path: "/test/RelayHost".into(),
-                context_token: context.into(),
-            },
-            acknowledgment_deadline_ms: if context == "delayed" { 20 } else { 1000 },
-            turn_timeout_ms: 3000,
-            empty_reply_text: "pause".into(),
-            deadline_reply_text: "working".into(),
-            lost_reply_text: "lost".into(),
-        };
-        let _: RelayStatus = proxy.call("RelayStart", (request.clone(),)).await?;
-        let _: RelayStatus = proxy.call("RelayStart", (request,)).await?;
-        tokio::time::timeout(Duration::from_secs(5), brain.completed.notified()).await?;
-        let effects = brain
-            .effects
-            .lock()
-            .await
-            .get(context)
-            .cloned()
-            .unwrap_or_default();
-        let expected = match context {
-            "foreground" => vec![
-                RelayEffect::Delta {
-                    text: "module".into(),
-                },
-                RelayEffect::Delta { text: " ".into() },
-                RelayEffect::Delta {
-                    text: "relay".into(),
-                },
-                RelayEffect::Done,
-            ],
-            "delayed" => vec![
-                RelayEffect::Delta {
-                    text: "working".into(),
-                },
-                RelayEffect::Done,
-                RelayEffect::Delta {
-                    text: "module".into(),
-                },
-                RelayEffect::Delta { text: " ".into() },
-                RelayEffect::Delta {
-                    text: "relay".into(),
-                },
-                RelayEffect::Deferred {
-                    outcome: RelayOutcome::Success {
-                        text: "module relay".into(),
-                    },
-                },
-            ],
-            _ => vec![
-                RelayEffect::LostBrain,
-                RelayEffect::Error {
-                    message: "relay coordination failed".into(),
-                },
-            ],
-        };
-        if effects != expected {
-            return Err(
-                io::Error::other(format!("relay effect order changed for {context}")).into(),
-            );
-        }
-        let released: RelayStatus = proxy
-            .call(
-                "RelayRelease",
-                (RelayHandleRequest {
-                    handle: reserved.handle.clone(),
-                },),
-            )
-            .await?;
-        if released.state != RelayState::Closed {
-            return Err(io::Error::other("relay release did not close").into());
-        }
-        let _: RelayStatus = proxy
-            .call(
-                "RelayRelease",
-                (RelayHandleRequest {
-                    handle: reserved.handle,
-                },),
-            )
-            .await?;
+        verify_context(proxy, &brain, context).await?;
     }
     if *brain.starts.lock().await != 2 {
         return Err(
@@ -274,5 +186,100 @@ pub(super) async fn verify(
     if proxy.call::<RelayStatus>("RelayReserve", ()).await.is_ok() {
         return Err(io::Error::other("relay shutdown reopened admission").into());
     }
+    Ok(())
+}
+
+async fn verify_context(
+    proxy: &tinybus::Proxy,
+    brain: &NativeBrain,
+    context: &str,
+) -> CheckResult<()> {
+    let reserved: RelayStatus = proxy.call("RelayReserve", ()).await?;
+    brain
+        .expected
+        .lock()
+        .await
+        .insert(context.into(), reserved.handle.id.clone());
+    let request = RelayStartRequest {
+        handle: reserved.handle.clone(),
+        port: RelayHostPort {
+            bus_name: "ai.test.RelayHost".into(),
+            object_path: "/test/RelayHost".into(),
+            context_token: context.into(),
+        },
+        acknowledgment_deadline_ms: if context == "delayed" { 20 } else { 1000 },
+        turn_timeout_ms: 3000,
+        empty_reply_text: "pause".into(),
+        deadline_reply_text: "working".into(),
+        lost_reply_text: "lost".into(),
+    };
+    let _: RelayStatus = proxy.call("RelayStart", (request.clone(),)).await?;
+    let _: RelayStatus = proxy.call("RelayStart", (request,)).await?;
+    tokio::time::timeout(Duration::from_secs(5), brain.completed.notified()).await?;
+    let effects = brain
+        .effects
+        .lock()
+        .await
+        .get(context)
+        .cloned()
+        .unwrap_or_default();
+    let expected = match context {
+        "foreground" => vec![
+            RelayEffect::Delta {
+                text: "module".into(),
+            },
+            RelayEffect::Delta { text: " ".into() },
+            RelayEffect::Delta {
+                text: "relay".into(),
+            },
+            RelayEffect::Done,
+        ],
+        "delayed" => vec![
+            RelayEffect::Delta {
+                text: "working".into(),
+            },
+            RelayEffect::Done,
+            RelayEffect::Delta {
+                text: "module".into(),
+            },
+            RelayEffect::Delta { text: " ".into() },
+            RelayEffect::Delta {
+                text: "relay".into(),
+            },
+            RelayEffect::Deferred {
+                outcome: RelayOutcome::Success {
+                    text: "module relay".into(),
+                },
+            },
+        ],
+        _ => vec![
+            RelayEffect::LostBrain,
+            RelayEffect::Error {
+                message: "relay coordination failed".into(),
+            },
+        ],
+    };
+    if effects != expected {
+        return Err(io::Error::other(format!("relay effect order changed for {context}")).into());
+    }
+    let released: RelayStatus = proxy
+        .call(
+            "RelayRelease",
+            (RelayHandleRequest {
+                handle: reserved.handle.clone(),
+            },),
+        )
+        .await?;
+    if released.state != RelayState::Closed {
+        return Err(io::Error::other("relay release did not close").into());
+    }
+    let _: RelayStatus = proxy
+        .call(
+            "RelayRelease",
+            (RelayHandleRequest {
+                handle: reserved.handle,
+            },),
+        )
+        .await?;
     Ok(())
 }

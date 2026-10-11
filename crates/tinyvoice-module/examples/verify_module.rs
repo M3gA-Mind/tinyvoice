@@ -73,10 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if declared != tinyvoice_bus::METHODS {
         return Err(io::Error::other("capture manifest differs from contract").into());
     }
-    verify_relay_turn(&proxy).await?;
-    verify_live_input(&proxy).await?;
-    live::verify_runtime(&proxy, &client).await?;
-    relay_runtime::verify(&proxy, &client).await?;
+    verify_portable_runtimes(&proxy, &client).await?;
     verify_recording_summary(&proxy).await?;
     // Default-denied permission must reject before any native device is opened.
     let denied: tinyvoice_bus::capture::CaptureResult<tinyvoice_bus::capture::CaptureHandle> =
@@ -406,5 +403,16 @@ async fn verify_live_input(proxy: &tinybus::Proxy) -> Result<(), Box<dyn std::er
     ) {
         return Err(io::Error::other("module changed default live start framing").into());
     }
+    Ok(())
+}
+
+async fn verify_portable_runtimes(
+    proxy: &tinybus::Proxy,
+    client: &Connection,
+) -> Result<(), Box<dyn std::error::Error>> {
+    verify_relay_turn(proxy).await?;
+    verify_live_input(proxy).await?;
+    live::verify_runtime(proxy, client).await?;
+    relay_runtime::verify(proxy, client).await?;
     Ok(())
 }
