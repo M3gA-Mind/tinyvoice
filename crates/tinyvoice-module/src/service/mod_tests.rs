@@ -989,3 +989,36 @@ async fn hotkey_contract_replays_events_and_shutdown_is_terminal() -> tinybus::R
     assert_eq!(after, Err(HotkeyError::Closed));
     Ok(())
 }
+
+#[tokio::test]
+async fn relay_preparation_preserves_text_history_and_readback_boundaries() {
+    let proxy = connect().await.unwrap();
+    let request = serde_json::json!({
+        "messages": [
+            {"role": "system", "content": "provider guidance"},
+            {"role": "user", "content": "earlier question"},
+            {"role": "agent", "content": "earlier answer"},
+            {"role": "tool", "content": "private tool output"},
+            {"role": "user", "content": [
+                {"type": "text", "text": "  Read verbatim:"},
+                {"type": "image", "url": "ignored"},
+                {"type": "text", "text": "  hello 世界  "}
+            ]}
+        ],
+        "readback_prefix": "Read verbatim:"
+    });
+    let reply: serde_json::Value = proxy.call("PrepareRelayTurn", &request).await.unwrap();
+    assert_eq!(reply["prompt"], "  Read verbatim:   hello 世界  ");
+    assert_eq!(reply["readback_payload"], "hello 世界");
+    assert_eq!(reply["content_free"], false);
+    assert_eq!(reply["answerable"], false);
+    assert_eq!(reply["arm_speak_back"], false);
+    assert_eq!(
+        reply["history"],
+        serde_json::json!([
+            ["user", "earlier question"],
+            ["agent", "earlier answer"],
+            ["user", "  Read verbatim:   hello 世界  "]
+        ])
+    );
+}

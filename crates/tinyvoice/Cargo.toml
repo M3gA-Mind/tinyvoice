@@ -12,6 +12,8 @@ keywords = ["voice", "vad", "speech", "audio", "agent"]
 categories = ["multimedia::audio"]
 
 [dependencies]
+# Relay message content is JSON vocabulary, without HTTP or runtime behavior.
+serde_json = "1"
 # Shared wire payloads live in a transport-free crate; this adds no TinyBus
 # runtime or module SDK dependency to the voice library.
 tinyvoice-bus = { version = "0.1.2", path = "../tinyvoice-bus" }
@@ -28,8 +30,6 @@ serde = { version = "1", features = ["derive"], optional = true }
 tokio = { version = "1", default-features = false, features = ["sync"], optional = true }
 
 [dev-dependencies]
-# The intent and transcript types are a JSON wire contract; tests pin it.
-serde_json = "1"
 # The `capture` tests drive async handles with `#[tokio::test]`.
 tokio = { version = "1", features = ["macros", "rt", "sync"] }
 

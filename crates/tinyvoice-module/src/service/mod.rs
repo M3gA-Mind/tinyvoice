@@ -185,6 +185,13 @@ fn to_json<T: serde::Serialize>(value: &T) -> TinyBusResult<String> {
 )]
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.Voice")]
 impl VoiceService {
+    /// Prepare provider-relayed text without executing the host agent.
+    async fn prepare_relay_turn(
+        &self,
+        request: tinyvoice_bus::relay::RelayTurnRequest,
+    ) -> TinyBusResult<tinyvoice_bus::relay::PreparedRelayTurn> {
+        Ok(tinyvoice::relay::prepare_turn(&request))
+    }
     /// Enumerate devices inside the module without opening a recording.
     async fn list_input_devices(
         &self,
@@ -678,6 +685,7 @@ tinybus_module::module_export_optional_static! {
         "VadReset",
         "VadClose",
         "PrepareFrames",
+        "PrepareRelayTurn",
         "FrameEnergies",
         "CaptureStart",
         "CapturePoll",
