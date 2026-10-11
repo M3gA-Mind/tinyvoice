@@ -1,3 +1,5 @@
+//! Regression fixtures for portable relay prompt and readback semantics.
+
 use super::*;
 // Regressions for the text semantics migrated from the host voice relay.
 use serde_json::json;
