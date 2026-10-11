@@ -91,6 +91,7 @@ impl ToolDispatch<(), ()> for CallbackTool {
             anyhow::bail!("live tool callback request exceeds its serialized limit");
         }
         let mut cancellation = InvocationGuard {
+            runtime: tokio::runtime::Handle::current(),
             proxy: self.proxy.clone(),
             request: Some(CancelLiveToolRequest {
                 context_token: request.context_token.clone(),
@@ -119,6 +120,7 @@ mod tests;
 /// their invocation leases on endpoint/context teardown. Provider cancellation
 /// that permits a running native tool to finish does not drop this guard early.
 struct InvocationGuard {
+    runtime: tokio::runtime::Handle,
     proxy: tinybus::Proxy,
     request: Option<CancelLiveToolRequest>,
 }
@@ -127,7 +129,7 @@ impl Drop for InvocationGuard {
     fn drop(&mut self) {
         if let Some(request) = self.request.take() {
             let proxy = self.proxy.clone();
-            tokio::spawn(async move {
+            self.runtime.spawn(async move {
                 let _ = tokio::time::timeout(
                     std::time::Duration::from_secs(1),
                     proxy.call::<CancelLiveToolReply>(CANCEL_CALLBACK_METHOD, (request,)),
