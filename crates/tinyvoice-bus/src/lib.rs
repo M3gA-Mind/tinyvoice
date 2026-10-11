@@ -14,6 +14,7 @@ pub mod capture;
 pub mod hotkey;
 pub mod intent;
 pub mod names;
+pub mod relay;
 pub mod transcript;
 pub mod vad;
 pub mod version;

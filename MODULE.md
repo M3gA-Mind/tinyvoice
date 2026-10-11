@@ -4,7 +4,7 @@ This package contains the native `tinyvoice` module for TinyBus module ABI v1.
 Install only the archive matching the host operating system and architecture.
 
 The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
-`/ai/tinyhumans/tinyvoice/Voice`, and provides 33 methods under contract 1.5.
+`/ai/tinyhumans/tinyvoice/Voice`, and provides 34 methods under contract 1.6.
 
 ## Methods
 
@@ -20,6 +20,7 @@ The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
 | `VadIsSpeaking` | `session` | `bool` |
 | `VadReset` | `session` | — |
 | `VadClose` | `session` | — |
+| `PrepareRelayTurn` | `RelayTurnRequest { messages, readback_prefix }` | `PreparedRelayTurn`: prompt, ordered history pairs, optional readback payload, content-free, speak-back and answerable flags |
 | `PrepareFrames` | `samples`, `source_rate`, `channels` | base64 `f32` mono @ 16 kHz |
 | `FrameEnergies` | `samples`, `frame_len` | per-frame RMS |
 | `EncodeWav` | `samples` (`f32` mono), `sample_rate` | base64 WAV |
@@ -45,6 +46,15 @@ The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
 | `HotkeyShutdown` | none | terminal cleanup status ([lifecycle](docs/specs/hotkey-module-lifecycle.md)) |
 
 Notes on the contract:
+
+- `PrepareRelayTurn` accepts provider-style message JSON and a host-selected
+  readback prefix. It preserves supported text and user/assistant/agent history,
+  skips unsupported content, and performs no agent execution. Serialized requests
+  are limited to 4 MiB in aggregate, including JSON escaping and all fields.
+  The limit is checked before constructing copies in the reply. Prepared replies
+  also reserve 64 KiB for the envelope within TinyBus's 16 MiB frame limit.
+  Oversized calls return a method error and leave the connection usable. See
+  [relay preparation](docs/specs/relay-turn-preparation.md) for exact semantics.
 
 - `mode` is `"dictation"` or `"conversation"`. An unrecognised value is an
   **error**, not a silent fallback: the two modes disagree about whether a bare
