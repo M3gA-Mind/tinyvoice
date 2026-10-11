@@ -97,3 +97,7 @@ impl ToolDispatch<(), ()> for CallbackTool {
         Ok(serde_json::from_value(reply.result)?)
     }
 }
+
+#[cfg(test)]
+#[path = "callback_tests.rs"]
+mod tests;
