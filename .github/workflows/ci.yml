@@ -72,15 +72,25 @@ jobs:
       - name: Test default features
         run: cargo test
 
+      - name: Verify compiled live module boundary
+        run: |
+          cargo build --locked --manifest-path crates/tinyvoice-module/Cargo.toml --lib
+          cargo run --locked --manifest-path crates/tinyvoice-module/Cargo.toml --example verify_module -- crates/tinyvoice-module/target/debug/libtinyvoice_module.so
+
       - name: Require 90% line coverage in every source file
         run: .github/scripts/check-file-coverage.sh 90 coverage.json
+
+      - name: Require 90% live module file coverage
+        run: .github/scripts/check-live-module-coverage.sh 90 live-module-coverage.json
 
       - name: Upload coverage report
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: coverage-json
-          path: coverage.json
+          path: |
+            coverage.json
+            live-module-coverage.json
           if-no-files-found: ignore
 
   windows-hotkeys:

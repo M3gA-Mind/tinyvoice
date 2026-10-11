@@ -156,7 +156,7 @@ impl std::fmt::Debug for ExecuteLiveToolRequest {
 
 /// A canonical tool result serialized mechanically by the host.
 ///
-/// It uses TinyTools' complete result JSON, including its reported-error flag.
+/// It uses `TinyTools`' complete result JSON, including its reported-error flag.
 /// The module decodes that existing vocabulary rather than inventing success.
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExecuteLiveToolReply {
