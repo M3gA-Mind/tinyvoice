@@ -14,3 +14,8 @@ Spec: [relay turn preparation](../specs/relay-turn-preparation.md).
    documentation, then open the canonical upstream PR.
 6. Consume a released module in the host separately. Agent execution,
    product configuration and backend transport remain outside this change.
+
+7. Reproduce oversized reply amplification before adding an aggregate request
+   limit. Verify exact serialized boundaries, escaped text, aggregate history,
+   rejection before copying and same-connection recovery through the real bus.
+   Rebuild the native artifact and exercise rejection through its ABI.

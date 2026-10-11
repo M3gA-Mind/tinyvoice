@@ -43,3 +43,13 @@ fn near_limit_text_can_be_copied_into_all_three_reply_fields() {
     request.readback_prefix.push('x');
     assert!(prepare(&request).is_err());
 }
+
+#[test]
+fn reply_growth_cannot_exceed_the_transport_envelope_budget() {
+    let mut reply = tinyvoice::relay::prepare_turn(&RelayTurnRequest {
+        messages: Vec::new(),
+        readback_prefix: String::new(),
+    });
+    reply.prompt = "x".repeat(tinybus::message::codec::MAX_FRAME_LEN);
+    assert!(bounded_reply(reply).is_err());
+}

@@ -37,7 +37,10 @@ pub(super) fn prepare(request: &RelayTurnRequest) -> tinybus::Result<PreparedRel
             "relay request exceeds the four MiB serialized limit",
         ));
     }
-    let reply = tinyvoice::relay::prepare_turn(request);
+    bounded_reply(tinyvoice::relay::prepare_turn(request))
+}
+
+fn bounded_reply(reply: PreparedRelayTurn) -> tinybus::Result<PreparedRelayTurn> {
     // Keep envelope space and defend against future reply fields increasing
     // amplification. The input bound already limits construction allocations.
     if !fits(&reply, tinybus::message::codec::MAX_FRAME_LEN - 64 * 1024) {

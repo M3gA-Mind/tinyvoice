@@ -23,3 +23,12 @@ progress projection, delivery and approval context. The bus crate contains
 serialized vocabulary only; behavior runs in the compiled module. Hosts
 must consume a released module before deleting their implementations. An
 unpublished local build provides test evidence, not a replacement release pin.
+
+The compiled operation rejects requests whose serialized JSON exceeds four
+MiB, counting all messages, fields, escaping and the readback prefix together.
+It counts bytes without allocating another serialized text copy before
+preparation. This bounds amplification when prompt, history and readback retain
+the same text. A defensive reply check reserves 64 KiB for the TinyBus envelope
+within its sixteen MiB frame limit. Oversized calls return a method error;
+subsequent ordinary calls on the same connection remain usable. The pure
+library helper has no transport size limit.
