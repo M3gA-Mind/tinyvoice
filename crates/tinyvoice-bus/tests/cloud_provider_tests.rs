@@ -214,7 +214,10 @@ fn provider_failures_use_the_crate_wide_result() {
         .transcribe(TranscriptionRequest::default())
         .as_mut()
         .poll(&mut context);
-    assert_eq!(result, Poll::Ready(Err(tinyvoice_bus::Error::InvalidInput {
-        message: "audio is required".into(),
-    })));
+    assert_eq!(
+        result,
+        Poll::Ready(Err(tinyvoice_bus::Error::InvalidInput {
+            message: "audio is required".into(),
+        }))
+    );
 }
