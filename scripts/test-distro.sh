@@ -8,7 +8,7 @@ case "$image" in
   *) echo "unsupported module build image: $image" >&2; exit 2 ;;
 esac
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 crate="" version="" rust_target="" host="" output="release-assets" extras='[]'
 while (($#)); do
   case "$1" in
@@ -53,9 +53,9 @@ docker run --rm \
   "$image" bash -lc '
     set -euo pipefail
     if command -v dnf >/dev/null 2>&1; then
-      dnf install -y gcc gcc-c++ cmake curl git gzip jq make openssl-devel perl tar pkgconf-pkg-config alsa-lib-devel
+      dnf install -y gcc gcc-c++ cmake curl git gzip jq make openssl-devel perl tar pkgconf-pkg-config alsa-lib-devel libX11-devel libXtst-devel libXi-devel
     else
-      pacman -Syu --noconfirm base-devel cmake curl git gzip jq openssl perl alsa-lib
+      pacman -Syu --noconfirm base-devel cmake curl git gzip jq openssl perl alsa-lib libx11 libxtst libxi
     fi
     case "$(uname -m)" in
       x86_64) rustup_target=x86_64-unknown-linux-gnu; rustup_sha=20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c ;;

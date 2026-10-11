@@ -40,7 +40,9 @@ foreach ($file in $extraFiles) {
         }
     }
 }
-$targetRoot = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $root 'target' }
+$metadata = cargo metadata --manifest-path crates/tinyvoice-module/Cargo.toml --format-version 1 --no-deps | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) { throw 'Could not resolve Cargo target directory' }
+$targetRoot = $metadata.target_directory
 New-Item -ItemType Directory -Force $targetRoot | Out-Null
 $targetRoot = (Resolve-Path -LiteralPath $targetRoot).Path
 if (-not $targetRoot.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'CARGO_TARGET_DIR must stay inside the repository' }
