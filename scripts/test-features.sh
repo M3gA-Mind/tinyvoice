@@ -13,5 +13,6 @@ case "${RUNNER_OS:-$(uname -s)}" in
 esac
 case "${RUNNER_OS:-$(uname -s)}" in
   Windows|MINGW*|MSYS*|CYGWIN*) ;;
-  *) python3 scripts/test-package-layout.py ;;
+  *) python3 scripts/test-package-layout.py
+     python3 scripts/test-distro-cleanup.py ;;
 esac

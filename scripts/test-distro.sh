@@ -53,7 +53,16 @@ docker run --rm \
   --env OUTPUT_DIR="${output_path#"$root"/}" \
   "$image" bash -lc '
     set -euo pipefail
-    trap "chown -R \"$HOST_UID:$HOST_GID\" target \"$OUTPUT_DIR\" 2>/dev/null || true" EXIT
+    restore_ownership() {
+      chown -R "$HOST_UID:$HOST_GID" target "$OUTPUT_DIR" 2>/dev/null || true
+      # The module is a separate workspace and may configure its own target.
+      if command -v cargo >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+        module_target="$(cargo metadata --manifest-path crates/tinyvoice-module/Cargo.toml \
+          --format-version 1 --no-deps | jq -er .target_directory)" || return 0
+        chown -R "$HOST_UID:$HOST_GID" "$module_target" 2>/dev/null || true
+      fi
+    }
+    trap restore_ownership EXIT
     if command -v dnf >/dev/null 2>&1; then
       dnf install -y gcc gcc-c++ cmake curl git gzip jq make openssl-devel perl tar pkgconf-pkg-config alsa-lib-devel libX11-devel libXtst-devel libXi-devel
     else
