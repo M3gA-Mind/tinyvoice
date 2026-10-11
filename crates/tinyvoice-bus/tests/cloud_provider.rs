@@ -2,8 +2,8 @@
 
 use std::task::{Context, Poll, Waker};
 use tinyvoice_bus::provider::{
-    CloudVoiceProvider, ProviderFuture, RealtimeRequest, RealtimeSession, SynthesisRequest,
-    Transcription, TranscriptionRequest,
+    CloudVoiceProvider, ProviderError, ProviderErrorKind, ProviderFuture, RealtimeRequest,
+    RealtimeSession, SynthesisRequest, Transcription, TranscriptionRequest,
 };
 
 #[derive(Debug)]
@@ -12,7 +12,10 @@ struct HostProvider;
 impl CloudVoiceProvider for HostProvider {
     fn transcribe(&self, request: TranscriptionRequest) -> ProviderFuture<'_, Transcription> {
         Box::pin(std::future::ready(if request.audio_base64.is_empty() {
-            Err("audio is required".into())
+            Err(ProviderError {
+                kind: ProviderErrorKind::InvalidInput,
+                message: "audio is required".into(),
+            })
         } else {
             Ok(Transcription {
                 text: "spoken words".into(),
@@ -52,7 +55,10 @@ fn a_host_provider_dispatches_without_voice_implementation_or_runtime() {
             .transcribe(request.clone())
             .as_mut()
             .poll(&mut context),
-        Poll::Ready(Err("audio is required".into()))
+        Poll::Ready(Err(ProviderError {
+            kind: ProviderErrorKind::InvalidInput,
+            message: "audio is required".into()
+        }))
     );
     request.audio_base64 = "YXVkaW8=".into();
     assert_eq!(
@@ -178,10 +184,21 @@ fn realtime_debug_does_not_expose_connection_credentials() {
 }
 
 #[test]
-fn provider_errors_preserve_categories_independently_of_display_text() -> Result<(), serde_json::Error> {
+fn provider_errors_preserve_categories_independently_of_display_text()
+-> Result<(), serde_json::Error> {
     use tinyvoice_bus::provider::{ProviderError, ProviderErrorKind};
-    for kind in [ProviderErrorKind::InvalidInput, ProviderErrorKind::Unavailable, ProviderErrorKind::SessionExpired, ProviderErrorKind::ApiKeyRejected, ProviderErrorKind::Transport, ProviderErrorKind::InvalidResponse] {
-        let error = ProviderError { kind, message: "same human-readable detail".into() };
+    for kind in [
+        ProviderErrorKind::InvalidInput,
+        ProviderErrorKind::Unavailable,
+        ProviderErrorKind::SessionExpired,
+        ProviderErrorKind::ApiKeyRejected,
+        ProviderErrorKind::Transport,
+        ProviderErrorKind::InvalidResponse,
+    ] {
+        let error = ProviderError {
+            kind,
+            message: "same human-readable detail".into(),
+        };
         let decoded: ProviderError = serde_json::from_value(serde_json::to_value(&error)?)?;
         assert_eq!(decoded.kind, kind);
         assert_eq!(decoded.to_string(), "same human-readable detail");
