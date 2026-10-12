@@ -4,7 +4,9 @@
 #[path = "mod_tests.rs"]
 mod test;
 
+mod live;
 mod relay;
+mod relay_runtime;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -58,6 +60,8 @@ pub struct VoiceService {
     sessions: std::sync::Mutex<Sessions>,
     capture: std::sync::Arc<capture::Capture>,
     hotkeys: std::sync::Arc<hotkey::Hotkeys>,
+    live: std::sync::Arc<live::Sessions>,
+    relay: std::sync::Arc<relay_runtime::Turns>,
 }
 
 /// The session table and the counter that names its entries.
@@ -187,6 +191,86 @@ fn to_json<T: serde::Serialize>(value: &T) -> TinyBusResult<String> {
 )]
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.Voice")]
 impl VoiceService {
+    /// Fix explicit host scheduling bounds for this module instance.
+    async fn relay_configure(
+        &self,
+        limits: tinyvoice_bus::relay::runtime::RelayLimits,
+    ) -> TinyBusResult<tinyvoice_bus::relay::runtime::RelayLimits> {
+        self.relay.configure(limits)
+    }
+    /// Reserve a bounded turn before native local-brain startup.
+    async fn relay_reserve(&self) -> TinyBusResult<tinyvoice_bus::relay::runtime::RelayStatus> {
+        self.relay.reserve()
+    }
+    /// Start generic timing and progress coordination on a known reservation.
+    async fn relay_start(
+        &self,
+        request: tinyvoice_bus::relay::runtime::RelayStartRequest,
+    ) -> TinyBusResult<tinyvoice_bus::relay::runtime::RelayStatus> {
+        self.relay.start(request)
+    }
+    /// Cancel one owned coordinator and notify current host invocation cleanup.
+    async fn relay_release(
+        &self,
+        request: tinyvoice_bus::relay::runtime::RelayHandleRequest,
+    ) -> TinyBusResult<tinyvoice_bus::relay::runtime::RelayStatus> {
+        self.relay.release(request.handle).await
+    }
+    /// Close admission and stop all owned relay coordinators.
+    async fn relay_shutdown(&self) -> TinyBusResult<()> {
+        self.relay.shutdown().await
+    }
+    /// Reserve a bounded live lease before any provider connection begins.
+    async fn live_reserve(&self) -> TinyBusResult<tinyvoice_bus::live::session::LiveStatus> {
+        self.live.reserve()
+    }
+    /// Attach the module-owned socket coordinator before provider startup.
+    async fn live_bind_transport(
+        &self,
+        request: tinyvoice_bus::live::transport::LiveBindTransportRequest,
+    ) -> TinyBusResult<tinyvoice_bus::live::session::LiveStatus> {
+        self.live.bind_transport(request)
+    }
+    /// Begin provider startup idempotently on a known reservation.
+    async fn live_start(
+        &self,
+        request: tinyvoice_bus::live::session::LiveStartRequest,
+    ) -> TinyBusResult<tinyvoice_bus::live::session::LiveStatus> {
+        self.live.start(request)
+    }
+    /// Forward bounded input to the existing native provider sender.
+    async fn live_send(
+        &self,
+        request: tinyvoice_bus::live::session::LiveSendRequest,
+    ) -> TinyBusResult<tinyvoice_bus::live::session::LiveStatus> {
+        self.live.send(request).await
+    }
+    /// Read ordered effects, replaying the current batch until acknowledgement.
+    async fn live_read(
+        &self,
+        request: tinyvoice_bus::live::session::LiveReadRequest,
+    ) -> TinyBusResult<tinyvoice_bus::live::session::LiveBatch> {
+        self.live.read(request).await
+    }
+    /// Stop owned tasks and notify host context cleanup within a finite deadline.
+    async fn live_release(
+        &self,
+        request: tinyvoice_bus::live::session::LiveHandleRequest,
+    ) -> TinyBusResult<tinyvoice_bus::live::session::LiveStatus> {
+        self.live.release(request.handle).await
+    }
+    /// Permanently close admission and stop all owned live tasks.
+    async fn live_shutdown(&self) -> TinyBusResult<()> {
+        self.live.shutdown().await
+    }
+    /// Parse portable live control frames without applying host policy.
+    async fn prepare_live_input(
+        &self,
+        request: tinyvoice_bus::live::PrepareLiveInputRequest,
+    ) -> TinyBusResult<tinyvoice_bus::live::PreparedLiveInput> {
+        tinyvoice::live::prepare_input(request)
+            .map_err(|error| tinybus::Error::failed(error.to_string()))
+    }
     /// Prepare provider-relayed text without executing the host agent.
     async fn prepare_relay_turn(
         &self,
@@ -665,7 +749,14 @@ impl VoiceService {
 /// Claim the bus name and serve the interface.
 async fn setup(connection: Connection) -> TinyBusResult<()> {
     connection
-        .serve_at(names::OBJECT_PATH.try_into()?, VoiceService::default())
+        .serve_at(
+            names::OBJECT_PATH.try_into()?,
+            VoiceService {
+                live: std::sync::Arc::new(live::Sessions::with_connection(&connection)),
+                relay: std::sync::Arc::new(relay_runtime::Turns::with_connection(&connection)),
+                ..VoiceService::default()
+            },
+        )
         .await?;
     connection.request_name(names::BUS_NAME).await?;
     Ok(())
@@ -688,6 +779,19 @@ tinybus_module::module_export_optional_static! {
         "VadClose",
         "PrepareFrames",
         "PrepareRelayTurn",
+        "RelayConfigure",
+        "RelayReserve",
+        "RelayStart",
+        "RelayRelease",
+        "RelayShutdown",
+        "PrepareLiveInput",
+        "LiveReserve",
+        "LiveBindTransport",
+        "LiveStart",
+        "LiveSend",
+        "LiveRead",
+        "LiveRelease",
+        "LiveShutdown",
         "FrameEnergies",
         "CaptureStart",
         "CapturePoll",

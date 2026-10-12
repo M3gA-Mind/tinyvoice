@@ -1059,3 +1059,124 @@ async fn oversized_relay_request_returns_an_error_without_breaking_the_bus() {
         .unwrap();
     assert_eq!(reply["prompt"], "hello");
 }
+
+#[tokio::test]
+async fn live_first_frame_parsing_preserves_default_rate_and_host_metadata() {
+    let proxy = connect().await.unwrap();
+    let reply: serde_json::Value = proxy.call("PrepareLiveInput", serde_json::json!({
+        "awaiting_start": true,
+        "frame": {"kind": "text", "text": "{\"type\":\"start\",\"thread_id\":\"thread\",\"client_id\":\"client\"}"}
+    })).await.unwrap();
+    assert_eq!(reply["type"], "start");
+    assert_eq!(reply["input_sample_rate"], 16000);
+    assert_eq!(reply["thread_id"], "thread");
+    assert_eq!(reply["client_id"], "client");
+}
+
+#[tokio::test]
+async fn live_reservations_exist_before_provider_startup_and_can_be_released() {
+    let proxy = connect().await.unwrap();
+    let reserved: serde_json::Value = proxy.call("LiveReserve", ()).await.unwrap();
+    assert_eq!(reserved["state"], "reserved");
+    assert_eq!(reserved["handle"]["id"].as_str().unwrap().len(), 32);
+    let released: serde_json::Value = proxy
+        .call(
+            "LiveRelease",
+            serde_json::json!({
+                "handle": reserved["handle"],
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(released["state"], "closed");
+}
+
+#[tokio::test]
+async fn live_callback_access_does_not_retain_the_module_bus_name_after_drop() {
+    let bus = MemoryBus::new();
+    Broker::new().spawn(bus.clone());
+    let service = Connection::connect(bus.connect().await.unwrap())
+        .await
+        .unwrap();
+    setup(service.clone()).await.unwrap();
+    let client = Connection::connect(bus.connect().await.unwrap())
+        .await
+        .unwrap();
+    let proxy = client.proxy(BUS_NAME, OBJECT_PATH, BUS_NAME).unwrap();
+    let reserved: serde_json::Value = proxy.call("LiveReserve", ()).await.unwrap();
+    assert_eq!(reserved["state"], "reserved");
+    drop(service);
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            if !client
+                .list_names()
+                .await
+                .unwrap()
+                .iter()
+                .any(|name| name.as_str() == BUS_NAME)
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("dropping the module owner must release its name");
+}
+
+#[tokio::test]
+async fn bound_live_transport_is_idempotent_and_excludes_competing_manual_readers() {
+    let proxy = connect().await.unwrap();
+    let reserved: serde_json::Value = proxy.call("LiveReserve", ()).await.unwrap();
+    let request = serde_json::json!({
+        "handle": reserved["handle"],
+        "port": {"bus_name":"ai.test.Transport", "object_path":"/test/Transport", "context_token":"known"}
+    });
+    let first: serde_json::Value = proxy.call("LiveBindTransport", &request).await.unwrap();
+    assert_eq!(first["state"], "reserved");
+    let repeated: serde_json::Value = proxy.call("LiveBindTransport", &request).await.unwrap();
+    assert_eq!(first, repeated);
+    let rejected: tinybus::Result<serde_json::Value> = proxy
+        .call(
+            "LiveRead",
+            serde_json::json!({
+                "handle":reserved["handle"], "acknowledged_batch":null
+            }),
+        )
+        .await;
+    assert!(rejected.is_err());
+    let changed = serde_json::json!({"handle":reserved["handle"],"port":{
+        "bus_name":"ai.test.Transport","object_path":"/test/Transport","context_token":"different"
+    }});
+    let rejected: tinybus::Result<serde_json::Value> =
+        proxy.call("LiveBindTransport", changed).await;
+    assert!(rejected.is_err());
+    // This fixture deliberately has no callback endpoint. Teardown fails
+    // boundedly rather than pretending the host acknowledged socket cleanup.
+    let _: tinybus::Result<serde_json::Value> = proxy
+        .call(
+            "LiveRelease",
+            serde_json::json!({"handle":reserved["handle"]}),
+        )
+        .await;
+}
+
+#[tokio::test]
+async fn relay_limits_are_configured_once_before_lease_admission() {
+    let proxy = connect().await.unwrap();
+    let limits = serde_json::json!({"max_active_turns":3,"max_pending_turns":16});
+    let first: serde_json::Value = proxy.call("RelayConfigure", &limits).await.unwrap();
+    assert_eq!(first, limits);
+    let repeated: serde_json::Value = proxy.call("RelayConfigure", &limits).await.unwrap();
+    assert_eq!(repeated, first);
+    let changed: tinybus::Result<serde_json::Value> = proxy
+        .call(
+            "RelayConfigure",
+            serde_json::json!({"max_active_turns":2,"max_pending_turns":16}),
+        )
+        .await;
+    assert!(changed.is_err());
+    let lease: serde_json::Value = proxy.call("RelayReserve", ()).await.unwrap();
+    assert_eq!(lease["state"], "reserved");
+    assert_eq!(lease["handle"]["id"].as_str().unwrap().len(), 32);
+}

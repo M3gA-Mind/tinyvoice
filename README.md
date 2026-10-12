@@ -29,6 +29,7 @@ permission check.
 | Wake-word gate, intent routing | What to *do* with an intent |
 | Hallucination detection | The STT transport, credentials, and retry policy |
 | Relay user-text extraction, readback classification and turn preparation | Local agent execution, product prompts, acknowledgment timing and delivery |
+| Portable live controls and module-owned provider/socket coordinator | Prepared credentials, provider selection, current tool policy and transcript persistence |
 
 A visible consequence: `VadConfig` has no constructor that reads a config file.
 A host builds one from whatever it persists. A crate that guessed at that shape
@@ -97,6 +98,29 @@ The compiled module owns native capture threads and callbacks. `cpal` delivers
 on a realtime thread where blocking causes dropouts, so callbacks forward raw
 interleaved samples into a bounded queue. Hosts poll batches and call
 `PrepareFrames` from a worker.
+
+### Relay turn coordination
+
+The compiled module also coordinates admitted local-brain turns through
+explicit RelayHost callbacks: scheduling, selected progress, an acknowledgment
+clock that starts before queueing, and deferred completion. Hosts supply the
+native brain and retain correlation, phrase and delivery policy. See the
+[relay runtime contract](docs/specs/relay-module-runtime.md).
+
+### Live sessions
+
+The compiled module owns the live provider loop through TinyAgentsLive and a
+bounded client/provider coordinator. Hosts reserve a lease, bind mechanical
+socket callbacks with `LiveBindTransport`, and supply prepared connection
+material and explicit declarations through `LiveStart`. The module handles
+polling, ordered effects, replay and cleanup; callbacks retain product policy
+and persistence. A declaration never grants execution permission.
+
+The minimal contract also supports manual `LiveSend`/`LiveRead` for hosts that
+need a custom transport, with replay until acknowledgment. Those operations
+are excluded once a module transport is bound. See the
+[live runtime contract](docs/specs/live-module-runtime.md) for bounds and
+callback cancellation requirements.
 
 ## Layout
 

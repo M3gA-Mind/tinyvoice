@@ -4,7 +4,7 @@ This package contains the native `tinyvoice` module for TinyBus module ABI v1.
 Install only the archive matching the host operating system and architecture.
 
 The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
-`/ai/tinyhumans/tinyvoice/Voice`, and provides 34 methods under contract 1.6.
+`/ai/tinyhumans/tinyvoice/Voice`, and provides 47 methods under contract 1.8.
 
 ## Methods
 
@@ -21,6 +21,19 @@ The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
 | `VadReset` | `session` | — |
 | `VadClose` | `session` | — |
 | `PrepareRelayTurn` | `RelayTurnRequest { messages, readback_prefix }` | `PreparedRelayTurn`: prompt, ordered history pairs, optional readback payload, content-free, speak-back and answerable flags |
+| `PrepareLiveInput` | `PrepareLiveInputRequest { awaiting_start, frame }` | parsed control or transport action; host owns policy validation |
+| `LiveBindTransport` | reserved handle and mechanical host transport port | idempotent `LiveStatus`; module owns the client/provider coordinator |
+| `RelayConfigure` | explicit concurrent/pending turn limits | immutable idempotent `RelayLimits` |
+| `RelayReserve` | none | bounded opaque `RelayStatus` before native work |
+| `RelayStart` | reserved handle, saved host callback context, explicit timing/fallbacks | asynchronous idempotent `RelayStatus` |
+| `RelayRelease` | known relay handle | bounded cleanup and closed status |
+| `RelayShutdown` | none | permanent closed admission and bounded concurrent cleanup |
+| `LiveReserve` | none | opaque `LiveStatus` reserved before connection startup |
+| `LiveStart` | `LiveStartRequest` | idempotent starting/running status for identical inputs |
+| `LiveSend` | handle and text, PCM16 audio, interrupt or stop command | status after bounded input admission |
+| `LiveRead` | handle and optional acknowledged batch | bounded replayable ordered frames and persistence effects |
+| `LiveRelease` | handle | closed status after bounded provider/context cleanup |
+| `LiveShutdown` | none | terminal admission shutdown and concurrent bounded cleanup |
 | `PrepareFrames` | `samples`, `source_rate`, `channels` | base64 `f32` mono @ 16 kHz |
 | `FrameEnergies` | `samples`, `frame_len` | per-frame RMS |
 | `EncodeWav` | `samples` (`f32` mono), `sample_rate` | base64 WAV |
@@ -114,3 +127,5 @@ TinyBus modules are trusted in-process code: a loaded module shares the address
 space, the privileges and the crash domain, and TinyBus never unloads one.
 Install release artifacts only from a trusted source, and restart the host after
 replacing a loaded module.
+
+Relay coordination uses context-bound host callbacks; see the [relay runtime contract](docs/specs/relay-module-runtime.md).

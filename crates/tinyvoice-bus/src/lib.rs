@@ -15,6 +15,7 @@ mod error;
 pub mod capture;
 pub mod hotkey;
 pub mod intent;
+pub mod live;
 pub mod names;
 pub mod provider;
 pub mod relay;

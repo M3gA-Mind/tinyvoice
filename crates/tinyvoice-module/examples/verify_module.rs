@@ -13,7 +13,13 @@ use tinybus::transport::memory::MemoryBus;
 // example once ended up dialling `/ai.tinyhumans.tinyvoice.Voice` — a bus name
 // where an object path belongs — while the module served the correct path and
 // every in-process test still passed.
-use tinyvoice_module::{BUS_NAME, OBJECT_PATH};
+use tinyvoice_bus::{BUS_NAME, OBJECT_PATH};
+
+#[path = "verify_module/live.rs"]
+mod live;
+
+#[path = "verify_module/relay_runtime.rs"]
+mod relay_runtime;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -67,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if declared != tinyvoice_bus::METHODS {
         return Err(io::Error::other("capture manifest differs from contract").into());
     }
-    verify_relay_turn(&proxy).await?;
+    verify_portable_runtimes(&proxy, &client).await?;
     verify_recording_summary(&proxy).await?;
     // Default-denied permission must reject before any native device is opened.
     let denied: tinyvoice_bus::capture::CaptureResult<tinyvoice_bus::capture::CaptureHandle> =
@@ -373,5 +379,40 @@ async fn verify_relay_turn(proxy: &tinybus::Proxy) -> Result<(), Box<dyn std::er
     {
         return Err(io::Error::other("compiled relay preparation changed text semantics").into());
     }
+    Ok(())
+}
+
+async fn verify_live_input(proxy: &tinybus::Proxy) -> Result<(), Box<dyn std::error::Error>> {
+    let start: tinyvoice_bus::live::PreparedLiveInput = proxy
+        .call(
+            tinyvoice_bus::names::methods::PREPARE_LIVE_INPUT,
+            (tinyvoice_bus::live::PrepareLiveInputRequest {
+                awaiting_start: true,
+                frame: tinyvoice_bus::live::TransportFrame::Text {
+                    text: r#"{"type":"start","client_id":"client"}"#.into(),
+                },
+            },),
+        )
+        .await?;
+    if !matches!(
+        start,
+        tinyvoice_bus::live::PreparedLiveInput::Control(tinyvoice_bus::live::ClientFrame::Start {
+            input_sample_rate: 16_000,
+            ..
+        })
+    ) {
+        return Err(io::Error::other("module changed default live start framing").into());
+    }
+    Ok(())
+}
+
+async fn verify_portable_runtimes(
+    proxy: &tinybus::Proxy,
+    client: &Connection,
+) -> Result<(), Box<dyn std::error::Error>> {
+    verify_relay_turn(proxy).await?;
+    verify_live_input(proxy).await?;
+    live::verify_runtime(proxy, client).await?;
+    relay_runtime::verify(proxy, client).await?;
     Ok(())
 }

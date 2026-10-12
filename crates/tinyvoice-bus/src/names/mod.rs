@@ -8,6 +8,32 @@ pub const OBJECT_PATH: &str = "/ai/tinyhumans/tinyvoice/Voice";
 
 /// One constant per member of [`BUS_NAME`].
 pub mod methods {
+    /// Fix explicit host concurrency and reservation bounds.
+    pub const RELAY_CONFIGURE: &str = "RelayConfigure";
+    /// Reserve a relay turn before local-brain startup.
+    pub const RELAY_RESERVE: &str = "RelayReserve";
+    /// Own foreground timing and deferred progress on a known reservation.
+    pub const RELAY_START: &str = "RelayStart";
+    /// Stop one owned relay turn and notify current host cleanup.
+    pub const RELAY_RELEASE: &str = "RelayRelease";
+    /// Close relay admission and stop all owned coordinators.
+    pub const RELAY_SHUTDOWN: &str = "RelayShutdown";
+    /// Bind the module-owned socket coordinator before provider startup.
+    pub const LIVE_BIND_TRANSPORT: &str = "LiveBindTransport";
+    /// Reserve a live provider session.
+    pub const LIVE_RESERVE: &str = "LiveReserve";
+    /// Start native provider and tool-loop execution on a reserved handle.
+    pub const LIVE_START: &str = "LiveStart";
+    /// Forward bounded audio, text, interrupt or stop input.
+    pub const LIVE_SEND: &str = "LiveSend";
+    /// Read an ordered replayable live event batch.
+    pub const LIVE_READ: &str = "LiveRead";
+    /// Release a live session and notify host context cleanup.
+    pub const LIVE_RELEASE: &str = "LiveRelease";
+    /// Close admission and stop all owned live sessions.
+    pub const LIVE_SHUTDOWN: &str = "LiveShutdown";
+    /// Parse an initial or later portable live control frame.
+    pub const PREPARE_LIVE_INPUT: &str = "PrepareLiveInput";
     /// Extracts and classifies a provider-relayed conversational turn.
     pub const PREPARE_RELAY_TURN: &str = "PrepareRelayTurn";
     /// Reserves a hotkey lease before native startup.
@@ -102,14 +128,27 @@ pub const METHODS: &[&str] = &[
     methods::HOTKEY_STOP,
     methods::IS_HALLUCINATED,
     methods::LIST_INPUT_DEVICES,
+    methods::LIVE_BIND_TRANSPORT,
+    methods::LIVE_READ,
+    methods::LIVE_RELEASE,
+    methods::LIVE_RESERVE,
+    methods::LIVE_SEND,
+    methods::LIVE_SHUTDOWN,
+    methods::LIVE_START,
     methods::PREPARE_CAPTURE,
     methods::PREPARE_FRAMES,
+    methods::PREPARE_LIVE_INPUT,
     methods::PREPARE_RELAY_TURN,
     methods::READ_AUDIO_OUTPUT,
     methods::RECORDING_CANCEL,
     methods::RECORDING_FINISH,
     methods::RECORDING_START,
     methods::RECORDING_SUMMARY,
+    methods::RELAY_CONFIGURE,
+    methods::RELAY_RELEASE,
+    methods::RELAY_RESERVE,
+    methods::RELAY_SHUTDOWN,
+    methods::RELAY_START,
     methods::RELEASE_AUDIO_OUTPUT,
     methods::RESERVE_CAPTURE,
     methods::ROUTE,

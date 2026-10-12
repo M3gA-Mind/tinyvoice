@@ -32,6 +32,13 @@
 //! feeds can be composed from approved Computer accessibility facts by the
 //! host; `TinyVoice` does not link `Computer` or own accessibility algorithms.
 //!
+//! # Live sessions
+//!
+//! The module owns generic provider/tool execution through `TinyAgentsLive` and
+//! the bounded client/provider coordinator. Hosts supply connection material,
+//! current tool authority, mechanical socket callbacks and persistence. No
+//! module method obtains product credentials or selects product policy.
+//!
 //! # Bounded session state
 //!
 //! `VoiceService` retains capture, recording, VAD and hotkey owners between bus

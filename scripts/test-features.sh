@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+.github/scripts/test-release-version-bump.sh
 python3 scripts/test-e2e-version.py
 python3 scripts/test-native-portability.py
 cargo test --locked --workspace

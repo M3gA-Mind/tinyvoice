@@ -60,6 +60,7 @@ pub mod capture;
 #[cfg(feature = "hotkey")]
 pub mod hotkey;
 pub mod intent;
+pub mod live;
 pub mod relay;
 pub mod transcript;
 pub mod vad;

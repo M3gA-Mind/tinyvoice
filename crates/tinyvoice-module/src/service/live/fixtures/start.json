@@ -1,0 +1,8 @@
+{
+ "handle": {"id": "fixture"},
+ "connection": {"kind": "gemini_relay", "ws_url": "ws://127.0.0.1:9", "session_id": "provider-session", "model": "fixture"},
+ "configuration": {"model": "fixture", "system_instruction": "host instruction", "voice": "host voice", "language": "en", "first_message": "hello", "input_sample_rate": 16000,
+  "tools": [], "input_transcription": true, "output_transcription": true, "manual_turn_detection": true, "silence_ms": 600, "speech_threshold": 0.5, "provider_options": {"host": true}},
+ "tool_port": {"bus_name": "ai.test.LiveTools", "object_path": "/test/LiveTools", "context_token": "fixture-context"},
+ "session_id": "host-session", "provider": "host-provider", "thread_id": "host-thread", "max_tool_calls": 8, "tool_timeout_ms": 1000, "connect_timeout_ms": 1000
+}
