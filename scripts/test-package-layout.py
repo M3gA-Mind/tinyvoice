@@ -29,7 +29,7 @@ class PackageTests(unittest.TestCase):
             pacman.chmod(0o755)
             env = {"PATH": str(bin_dir), "PACMAN_ARGS": str(capture)}
             result = subprocess.run(
-                [str(ROOT / "scripts/install-distro-packages.sh")],
+                ["bash", str(ROOT / "scripts/install-distro-packages.sh")],
                 cwd=ROOT,
                 env=env,
                 text=True,
