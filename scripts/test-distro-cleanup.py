@@ -14,7 +14,7 @@ class DistroCleanupTests(unittest.TestCase):
         """Cargo metadata selects the target even when it is outside root target/."""
         source = (ROOT / "scripts/test-distro.sh").read_text()
         payload = source.split('"$image" bash -lc \'', 1)[1]
-        cleanup = payload.split("    if command -v dnf", 1)[0]
+        cleanup = payload.split("    scripts/install-distro-packages.sh", 1)[0]
         target = ROOT / "target"
         target.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=target) as directory:
