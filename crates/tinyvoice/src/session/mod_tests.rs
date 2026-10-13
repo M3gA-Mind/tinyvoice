@@ -105,7 +105,7 @@ fn an_unaddressed_utterance_is_never_delivered() {
     let mut host = fake("what a nice day");
     let out = process_utterance(&mut host, GATES, "Hey Tiny", b"", 1.0, 0.5);
     assert_eq!(out, Outcome::Dropped);
-    assert!(host.delivered.is_empty());
+    assert_eq!(host.delivered, Vec::<Delivery>::new());
 }
 
 #[test]
