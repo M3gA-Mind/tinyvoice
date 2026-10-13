@@ -77,14 +77,15 @@ impl RecordingSession {
         Some(self.generation)
     }
 
-    /// Begin a recording from `Idle` **or** `Transcribing`; returns the new generation.
+    /// Begin a recording from any running phase; returns the new generation.
     ///
-    /// A hotkey press while the previous recording is still being transcribed
-    /// must start the next one, so rapid consecutive presses are never missed.
-    /// The new generation makes the older pipeline's updates stale. Refused
-    /// when `Stopped` or already `Recording`.
+    /// A hotkey press while the previous recording is still being stopped or
+    /// transcribed must start the next one, so rapid consecutive presses are
+    /// never missed. The new generation makes the older pipeline's updates
+    /// stale. Refused only when `Stopped`; the caller decides whether a
+    /// recording is already live.
     pub fn restart_recording(&mut self) -> Option<u64> {
-        if matches!(self.phase, SessionPhase::Stopped | SessionPhase::Recording) {
+        if self.phase == SessionPhase::Stopped {
             return None;
         }
         self.generation += 1;
