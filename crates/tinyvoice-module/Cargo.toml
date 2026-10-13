@@ -20,10 +20,14 @@ native-hotkeys = []
 
 [dependencies]
 # Native generic provider/tool-loop execution belongs inside the compiled module.
-# The recorded canonical TinyAgents submodule supplies its own recursive libraries.
-tinyagents-live = { path = "../../vendor/tinyagents/crates/tinyagents-live" }
-tinyagents-harness = { path = "../../vendor/tinyagents/crates/tinyagents-harness" }
-tinytools = { path = "../../vendor/tinyagents/vendor/tinytools/crates/tinytools" }
+# Version requirements, never nested paths: a host that links this module beside
+# others (OpenHuman's `openhuman-modules-linked`) patches these names to its own
+# single TinyAgents, and two path copies of one package cannot both be written
+# to a lockfile. The `[patch.crates-io]` table below keeps standalone builds on
+# the recorded canonical TinyAgents submodule.
+tinyagents-live = ">=2.1.4, <3"
+tinyagents-harness = ">=2.1.4, <3"
+tinytools = ">=0.5.0, <1"
 async-trait = "0.1"
 anyhow = "1"
 
@@ -86,6 +90,9 @@ tokio-tungstenite = "0.29"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "test-util"] }
 
 [patch.crates-io]
+tinyagents-live = { path = "../../vendor/tinyagents/crates/tinyagents-live" }
+tinyagents-harness = { path = "../../vendor/tinyagents/crates/tinyagents-harness" }
+tinytools = { path = "../../vendor/tinyagents/vendor/tinytools/crates/tinytools" }
 tinybus = { path = "../../vendor/tinybus/crates/tinybus" }
 tinybus-module = { path = "../../vendor/tinybus/crates/tinybus-module" }
 tinybus-macros = { path = "../../vendor/tinybus/crates/tinybus-macros" }
