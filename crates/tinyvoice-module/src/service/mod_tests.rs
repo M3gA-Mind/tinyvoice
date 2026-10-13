@@ -1220,7 +1220,7 @@ async fn gate_recording_applies_both_thresholds() -> tinybus::Result<()> {
 async fn recording_session_drives_press_to_finish_over_the_bus() -> tinybus::Result<()> {
     let proxy = connect().await?;
     let id: u64 = proxy.call("SessionOpen", ()).await?;
-    let mut advance = async |input: &str| -> tinybus::Result<serde_json::Value> {
+    let advance = async |input: &str| -> tinybus::Result<serde_json::Value> {
         let reply: String = proxy
             .call("SessionAdvance", (id, input.to_string()))
             .await?;
