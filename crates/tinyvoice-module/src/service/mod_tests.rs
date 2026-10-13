@@ -1180,3 +1180,27 @@ async fn relay_limits_are_configured_once_before_lease_admission() {
     assert_eq!(lease["state"], "reserved");
     assert_eq!(lease["handle"]["id"].as_str().unwrap().len(), 32);
 }
+
+#[tokio::test]
+async fn sequence_utterance_reports_the_disposition() -> tinybus::Result<()> {
+    let proxy = connect().await?;
+    let command: String = proxy
+        .call("SequenceUtterance", ("hey tiny open slack", "Hey Tiny"))
+        .await?;
+    assert_eq!(command, r#"{"disposition":"command","command":"open slack"}"#);
+    let bare: String = proxy.call("SequenceUtterance", ("hey tiny", "Hey Tiny")).await?;
+    assert_eq!(bare, r#"{"disposition":"bare_wake"}"#);
+    let ignored: String = proxy.call("SequenceUtterance", ("open slack", "Hey Tiny")).await?;
+    assert_eq!(ignored, r#"{"disposition":"ignored"}"#);
+    Ok(())
+}
+
+#[tokio::test]
+async fn gate_recording_applies_both_thresholds() -> tinybus::Result<()> {
+    let proxy = connect().await?;
+    let short: String = proxy.call("GateRecording", (0.1f32, 0.5f32, 0.3f32, 0.002f32)).await?;
+    assert_eq!(short, r#""too_short""#);
+    let pass: String = proxy.call("GateRecording", (1.0f32, 0.5f32, 0.3f32, 0.002f32)).await?;
+    assert_eq!(pass, r#""pass""#);
+    Ok(())
+}

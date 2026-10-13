@@ -412,6 +412,31 @@ impl VoiceService {
         Ok(intent::wake_word_present(&transcript, &wake_word))
     }
 
+    /// Apply the recording gates, returning a JSON `GateVerdict`.
+    async fn gate_recording(
+        &self,
+        duration_secs: f32,
+        peak_rms: f32,
+        min_duration_secs: f32,
+        silence_threshold: f32,
+    ) -> TinyBusResult<String> {
+        let gates = tinyvoice_bus::session::RecordingGates {
+            min_duration_secs,
+            silence_threshold,
+        };
+        to_json(&tinyvoice::session::gate_recording(gates, duration_secs, peak_rms))
+    }
+
+    /// Sequence a transcript through the wake-word gate, returning a JSON
+    /// `UtteranceDisposition`.
+    async fn sequence_utterance(
+        &self,
+        transcript: String,
+        wake_word: String,
+    ) -> TinyBusResult<String> {
+        to_json(&tinyvoice::session::sequence_utterance(&transcript, &wake_word))
+    }
+
     /// Whether an STT transcript looks like a hallucination.
     ///
     /// `mode` is `"dictation"` or `"conversation"`. An unrecognised value is an
@@ -771,6 +796,8 @@ tinybus_module::module_export_optional_static! {
         "ExtractCommand",
         "WakeWordPresent",
         "IsHallucinated",
+        "GateRecording",
+        "SequenceUtterance",
         "Segment",
         "VadOpen",
         "VadPush",

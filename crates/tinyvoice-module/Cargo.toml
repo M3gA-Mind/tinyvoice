@@ -31,7 +31,7 @@ anyhow = "1"
 getrandom = "0.4"
 
 # The transport-free TinyBus wire contract: names, payload types, and version.
-tinyvoice-bus = { version = "0.1.2", path = "../tinyvoice-bus" }
+tinyvoice-bus = { version = "0.1.3", path = "../tinyvoice-bus" }
 # The pure voice library stays independently usable and bus-agnostic; this
 # crate exists so the vendored TinyBus dependency never reaches it.
 tinyvoice = { version = "0.1.17", path = "../tinyvoice", features = ["capture", "hotkey"] }
