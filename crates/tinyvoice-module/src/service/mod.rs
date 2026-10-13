@@ -14,10 +14,11 @@ use tinybus::{Connection, Result as TinyBusResult};
 use tinyvoice_bus::{
     HotkeyFeedRequest, HotkeyHandleRequest, HotkeyReadRequest, HotkeyReserveRequest, HotkeyResult,
 };
-use tinyvoice_bus::{IndexedVadEvent, names};
+use tinyvoice_bus::{IndexedVadEvent, SessionInput, names};
 
 use tinyvoice::audio::{self, SilenceGateConfig};
 use tinyvoice::intent;
+use tinyvoice::session::HotkeyRecorder;
 use tinyvoice::transcript::{self, Mode};
 use tinyvoice::vad::{VadConfig, VadSegmenter};
 

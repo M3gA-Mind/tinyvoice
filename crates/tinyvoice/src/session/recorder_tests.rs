@@ -34,14 +34,20 @@ fn run_is_refused_while_already_running() {
 fn press_starts_a_recording_and_release_stops_it() {
     let mut r = running();
     let started = press(&mut r);
-    assert_eq!(started.action, SessionAction::StartRecording { generation: 1 });
+    assert_eq!(
+        started.action,
+        SessionAction::StartRecording { generation: 1 }
+    );
     assert_eq!(started.phase, SessionPhase::Recording);
     assert_eq!(
         ready(&mut r, false).action,
         SessionAction::RecordingLive { generation: 1 }
     );
     let stopped = r.advance(SessionInput::Released);
-    assert_eq!(stopped.action, SessionAction::StopRecording { generation: 1 });
+    assert_eq!(
+        stopped.action,
+        SessionAction::StopRecording { generation: 1 }
+    );
 }
 
 #[test]
@@ -68,7 +74,10 @@ fn release_with_no_recording_is_a_no_op() {
 fn a_stop_during_setup_is_deferred_until_the_minimum_after_setup() {
     let mut r = running();
     press(&mut r);
-    assert_eq!(r.advance(SessionInput::Released).action, SessionAction::None);
+    assert_eq!(
+        r.advance(SessionInput::Released).action,
+        SessionAction::None
+    );
     assert_eq!(
         ready(&mut r, false).action,
         SessionAction::DeferStop {
@@ -146,7 +155,10 @@ fn a_press_during_transcription_starts_the_next_recording() {
     press(&mut r);
     ready(&mut r, false);
     r.advance(SessionInput::Released);
-    assert!(r.advance(SessionInput::Transcribing { generation: 1 }).accepted);
+    assert!(
+        r.advance(SessionInput::Transcribing { generation: 1 })
+            .accepted
+    );
     assert_eq!(r.status().phase, SessionPhase::Transcribing);
     let next = press(&mut r);
     assert_eq!(next.action, SessionAction::StartRecording { generation: 2 });
@@ -163,7 +175,10 @@ fn stale_processing_cannot_reset_newer_recording_state() {
     let stale = r.advance(SessionInput::Finished { generation: 1 });
     assert!(!stale.accepted);
     assert_eq!(stale.phase, SessionPhase::Recording);
-    assert!(!r.advance(SessionInput::Transcribing { generation: 1 }).accepted);
+    assert!(
+        !r.advance(SessionInput::Transcribing { generation: 1 })
+            .accepted
+    );
 }
 
 #[test]
@@ -172,7 +187,10 @@ fn current_processing_can_update_state() {
     press(&mut r);
     ready(&mut r, false);
     r.advance(SessionInput::Released);
-    assert!(r.advance(SessionInput::Transcribing { generation: 1 }).accepted);
+    assert!(
+        r.advance(SessionInput::Transcribing { generation: 1 })
+            .accepted
+    );
     let done = r.advance(SessionInput::Finished { generation: 1 });
     assert!(done.accepted);
     assert_eq!(done.phase, SessionPhase::Idle);

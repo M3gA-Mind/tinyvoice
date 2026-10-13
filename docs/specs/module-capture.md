@@ -76,13 +76,13 @@ names, error detail, handles, audio, paths and request arguments.
 
 Local fixtures exercise lifecycle, bounds, faults and in-memory bus dispatch
 without hardware or external services. The actual compiled artifact verifier
-checks all 49 declared members and permission denial without opening a device.
+checks all 53 declared members and permission denial without opening a device.
 The native device bridge follows the repository's existing physical-device
 coverage exception; manager and processing code remain subject to the 90%
 per-file threshold.
 
 The release workflow installs ALSA development headers for Linux module builds.
-OpenHuman must pin a released artifact compatible with current contract 1.9
+OpenHuman must pin a released artifact compatible with current contract 1.10
 (this capture slice was introduced in 1.3) and verify its digest before
 switching callers. Module-owned hotkeys are specified in
 `hotkey-module-lifecycle.md`.

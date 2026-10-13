@@ -4,7 +4,7 @@ This package contains the native `tinyvoice` module for TinyBus module ABI v1.
 Install only the archive matching the host operating system and architecture.
 
 The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
-`/ai/tinyhumans/tinyvoice/Voice`, and provides 49 methods under contract 1.9.
+`/ai/tinyhumans/tinyvoice/Voice`, and provides 53 methods under contract 1.10.
 
 ## Methods
 
@@ -16,6 +16,10 @@ The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
 | `IsHallucinated` | `text`, `mode` | `bool` |
 | `GateRecording` | `duration_secs`, `peak_rms`, `min_duration_secs`, `silence_threshold` | JSON `GateVerdict` |
 | `SequenceUtterance` | `transcript`, `wake_word` | JSON `UtteranceDisposition` |
+| `SessionOpen` | none | recording session id (starts `stopped`) |
+| `SessionAdvance` | `session`, JSON `SessionInput` (`run`, `stop`, `pressed`, `released`, `setup_ready`, `setup_failed`, `deferred_stop_elapsed`, `transcribing`, `finished`) | JSON `SessionAdvance`: `accepted`, `phase`, `generation` and the one `action` the host takes (`start_recording`, `recording_live`, `defer_stop`, `stop_recording`, `none`) |
+| `SessionStatus` | `session` | JSON `SessionStatus` (`phase`, `generation`) |
+| `SessionClose` | `session` | — |
 | `Segment` | `config`, `frame_ms`, `energies` | JSON array of frame-indexed VAD events (one-shot) |
 | `VadOpen` | `config` | session id |
 | `VadPush` | `session`, `frame_ms`, `energies` | JSON array of frame-indexed VAD events |

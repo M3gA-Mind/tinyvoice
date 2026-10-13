@@ -145,9 +145,10 @@ impl HotkeyRecorder {
                     (false, SessionAction::None)
                 }
             }
-            SessionInput::Transcribing { generation } => {
-                (self.session.begin_transcribing(generation), SessionAction::None)
-            }
+            SessionInput::Transcribing { generation } => (
+                self.session.begin_transcribing(generation),
+                SessionAction::None,
+            ),
             SessionInput::Finished { generation } => {
                 (self.session.finish(generation), SessionAction::None)
             }
