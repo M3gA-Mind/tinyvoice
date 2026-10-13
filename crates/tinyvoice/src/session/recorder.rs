@@ -105,10 +105,8 @@ impl HotkeyRecorder {
             SessionInput::Released => {
                 if self.live {
                     self.stop_live()
-                } else if self.setup_pending {
-                    self.stop_pending = true;
-                    (true, SessionAction::None)
                 } else {
+                    self.stop_pending |= self.setup_pending;
                     (true, SessionAction::None)
                 }
             }

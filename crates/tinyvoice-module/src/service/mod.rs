@@ -75,6 +75,18 @@ struct Sessions {
     next_id: u64,
     /// Open segmenters.
     live: std::collections::HashMap<u64, VadSegmenter>,
+    /// Next recording-session id. Monotonic, never reused, for the same
+    /// reason as `next_id`.
+    next_recorder_id: u64,
+    /// Open hotkey-driven recording sessions, keyed by `SessionOpen`'s id.
+    recorders: std::collections::HashMap<u64, HotkeyRecorder>,
+}
+
+/// The error for a recording session id that is not open.
+fn unknown_recorder(session: u64) -> tinybus::Error {
+    tinybus::Error::failed(format!(
+        "recording session {session} is not open; it was closed, or never opened in this process"
+    ))
 }
 
 /// Decode a base64 payload, refusing anything over [`MAX_AUDIO_BYTES`].
@@ -592,6 +604,59 @@ impl VoiceService {
         Ok(())
     }
 
+    /// Open a hotkey-driven recording session (stopped) and return its id.
+    ///
+    /// The caller must `SessionClose` the id; see [`MAX_SESSIONS`].
+    async fn session_open(&self) -> TinyBusResult<u64> {
+        let mut sessions = self.lock_sessions()?;
+        if sessions.recorders.len() >= MAX_SESSIONS {
+            return Err(tinybus::Error::failed(format!(
+                "at the {MAX_SESSIONS} open recording session limit; close a session before opening another"
+            )));
+        }
+        let id = sessions.next_recorder_id;
+        sessions.next_recorder_id += 1;
+        sessions.recorders.insert(id, HotkeyRecorder::new());
+        Ok(id)
+    }
+
+    /// Apply a JSON `SessionInput` to a recording session and return a JSON
+    /// `SessionAdvance`: whether it applied, the new phase and generation, and
+    /// the one action the host must take.
+    async fn session_advance(&self, session: u64, input: String) -> TinyBusResult<String> {
+        let input: SessionInput = serde_json::from_str(&input)
+            .map_err(|e| tinybus::Error::failed(format!("invalid session input: {e}")))?;
+        let reply = {
+            let mut sessions = self.lock_sessions()?;
+            sessions
+                .recorders
+                .get_mut(&session)
+                .ok_or_else(|| unknown_recorder(session))?
+                .advance(input)
+        };
+        to_json(&reply)
+    }
+
+    /// A JSON `SessionStatus`: the session's phase and latest generation.
+    async fn session_status(&self, session: u64) -> TinyBusResult<String> {
+        let status = {
+            let sessions = self.lock_sessions()?;
+            sessions
+                .recorders
+                .get(&session)
+                .ok_or_else(|| unknown_recorder(session))?
+                .status()
+        };
+        to_json(&status)
+    }
+
+    /// Release a recording session. Closing an id that is already gone is not
+    /// an error, for the same reason as `VadClose`.
+    async fn session_close(&self, session: u64) -> TinyBusResult<()> {
+        self.lock_sessions()?.recorders.remove(&session);
+        Ok(())
+    }
+
     /// Downmix and resample a captured buffer, returning `f32` mono samples.
     ///
     /// The sibling of `PrepareCapture` for callers that need samples rather
@@ -811,6 +876,10 @@ tinybus_module::module_export_optional_static! {
         "VadIsSpeaking",
         "VadReset",
         "VadClose",
+        "SessionOpen",
+        "SessionAdvance",
+        "SessionStatus",
+        "SessionClose",
         "PrepareFrames",
         "PrepareRelayTurn",
         "RelayConfigure",
