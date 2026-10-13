@@ -32,7 +32,10 @@ pub use provider::{
     CloudVoiceProvider, ProviderFuture, RealtimeRequest, RealtimeSession, SynthesisRequest,
     Transcription, TranscriptionRequest,
 };
-pub use session::{GateVerdict, RecordingGates, SessionPhase, UtteranceDisposition};
+pub use session::{
+    GateVerdict, RecordingGates, SessionAction, SessionAdvance, SessionInput, SessionPhase,
+    SessionStatus, UtteranceDisposition,
+};
 pub use transcript::Mode;
 pub use vad::{IndexedVadEvent, VadConfig, VadEvent};
 

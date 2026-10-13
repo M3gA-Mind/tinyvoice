@@ -1215,3 +1215,66 @@ async fn gate_recording_applies_both_thresholds() -> tinybus::Result<()> {
     assert_eq!(pass, r#""pass""#);
     Ok(())
 }
+
+#[tokio::test]
+async fn recording_session_drives_press_to_finish_over_the_bus() -> tinybus::Result<()> {
+    let proxy = connect().await?;
+    let id: u64 = proxy.call("SessionOpen", ()).await?;
+    let advance = async |input: &str| -> tinybus::Result<serde_json::Value> {
+        let reply: String = proxy
+            .call("SessionAdvance", (id, input.to_string()))
+            .await?;
+        Ok(serde_json::from_str(&reply).unwrap())
+    };
+    assert!(
+        advance(r#"{"input":"run"}"#).await?["accepted"]
+            .as_bool()
+            .unwrap()
+    );
+    let started = advance(r#"{"input":"pressed"}"#).await?;
+    assert_eq!(started["action"]["action"], "start_recording");
+    assert_eq!(started["phase"], "recording");
+    let live = advance(r#"{"input":"setup_ready","stop_buffered":false}"#).await?;
+    assert_eq!(live["action"]["action"], "recording_live");
+    let stopped = advance(r#"{"input":"released"}"#).await?;
+    assert_eq!(stopped["action"]["action"], "stop_recording");
+    let generation = stopped["generation"].as_u64().unwrap();
+    let transcribing = advance(&format!(
+        r#"{{"input":"transcribing","generation":{generation}}}"#
+    ))
+    .await?;
+    assert_eq!(transcribing["phase"], "transcribing");
+    let stale = advance(r#"{"input":"finished","generation":999}"#).await?;
+    assert!(!stale["accepted"].as_bool().unwrap());
+    let status: String = proxy.call("SessionStatus", (id,)).await?;
+    assert_eq!(
+        status,
+        format!(r#"{{"phase":"transcribing","generation":{generation}}}"#)
+    );
+    proxy.call::<()>("SessionClose", (id,)).await?;
+    proxy.call::<()>("SessionClose", (id,)).await?;
+    assert!(proxy.call::<String>("SessionStatus", (id,)).await.is_err());
+    Ok(())
+}
+
+#[tokio::test]
+async fn recording_session_rejects_unknown_ids_and_bad_input() -> tinybus::Result<()> {
+    let proxy = connect().await?;
+    assert!(
+        proxy
+            .call::<String>(
+                "SessionAdvance",
+                (9_999u64, r#"{"input":"run"}"#.to_string())
+            )
+            .await
+            .is_err()
+    );
+    let id: u64 = proxy.call("SessionOpen", ()).await?;
+    assert!(
+        proxy
+            .call::<String>("SessionAdvance", (id, "not json".to_string()))
+            .await
+            .is_err()
+    );
+    Ok(())
+}
