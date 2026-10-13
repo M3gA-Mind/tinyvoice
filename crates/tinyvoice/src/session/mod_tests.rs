@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use super::*;
 
 const GATES: RecordingGates = RecordingGates {
