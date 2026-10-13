@@ -8,9 +8,7 @@
 
 use crate::intent::{self, VoiceIntent};
 use crate::transcript::{self, Mode};
-pub use tinyvoice_bus::session::{
-    GateVerdict, RecordingGates, SessionPhase, UtteranceDisposition,
-};
+pub use tinyvoice_bus::session::{GateVerdict, RecordingGates, SessionPhase, UtteranceDisposition};
 
 /// A run state whose updates are tied to the recording that requested them.
 ///

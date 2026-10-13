@@ -424,7 +424,11 @@ impl VoiceService {
             min_duration_secs,
             silence_threshold,
         };
-        to_json(&tinyvoice::session::gate_recording(gates, duration_secs, peak_rms))
+        to_json(&tinyvoice::session::gate_recording(
+            gates,
+            duration_secs,
+            peak_rms,
+        ))
     }
 
     /// Sequence a transcript through the wake-word gate, returning a JSON
@@ -434,7 +438,10 @@ impl VoiceService {
         transcript: String,
         wake_word: String,
     ) -> TinyBusResult<String> {
-        to_json(&tinyvoice::session::sequence_utterance(&transcript, &wake_word))
+        to_json(&tinyvoice::session::sequence_utterance(
+            &transcript,
+            &wake_word,
+        ))
     }
 
     /// Whether an STT transcript looks like a hallucination.

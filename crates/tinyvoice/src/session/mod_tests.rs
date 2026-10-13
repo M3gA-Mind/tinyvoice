@@ -48,14 +48,20 @@ fn sequencing_distinguishes_command_bare_wake_and_unaddressed() {
         sequence_utterance("what a nice day", "Hey Tiny"),
         UtteranceDisposition::Ignored
     );
-    assert_eq!(sequence_utterance("  ", "Hey Tiny"), UtteranceDisposition::Ignored);
+    assert_eq!(
+        sequence_utterance("  ", "Hey Tiny"),
+        UtteranceDisposition::Ignored
+    );
 }
 
 #[test]
 fn recognised_intents_take_the_fast_path_and_the_rest_go_to_the_agent() {
     assert!(matches!(
         plan_delivery("pause the music"),
-        Delivery::FastPath { intent: VoiceIntent::Pause, .. }
+        Delivery::FastPath {
+            intent: VoiceIntent::Pause,
+            ..
+        }
     ));
     assert_eq!(
         plan_delivery("what is the weather in Tokyo"),
@@ -87,7 +93,11 @@ impl SessionHost for Fake {
 }
 
 fn fake(text: &str) -> Fake {
-    Fake { text: Ok(text.into()), fail_fast: false, delivered: vec![] }
+    Fake {
+        text: Ok(text.into()),
+        fail_fast: false,
+        delivered: vec![],
+    }
 }
 
 #[test]
@@ -113,7 +123,9 @@ fn a_failed_fast_path_falls_back_to_the_agent() {
     assert_eq!(out, Outcome::Delivered);
     assert_eq!(
         host.delivered.last(),
-        Some(&Delivery::Agent { command: "pause the music".into() })
+        Some(&Delivery::Agent {
+            command: "pause the music".into()
+        })
     );
 }
 
@@ -124,13 +136,19 @@ fn a_bare_wake_word_is_acknowledged_through_the_agent() {
     assert_eq!(out, Outcome::Delivered);
     assert_eq!(
         host.delivered,
-        vec![Delivery::Agent { command: BARE_WAKE_ACK.into() }]
+        vec![Delivery::Agent {
+            command: BARE_WAKE_ACK.into()
+        }]
     );
 }
 
 #[test]
 fn a_transcription_failure_is_reported_not_delivered() {
-    let mut host = Fake { text: Err("boom".into()), fail_fast: false, delivered: vec![] };
+    let mut host = Fake {
+        text: Err("boom".into()),
+        fail_fast: false,
+        delivered: vec![],
+    };
     let out = process_utterance(&mut host, GATES, "Hey Tiny", b"", 1.0, 0.5);
     assert_eq!(out, Outcome::TranscribeFailed("boom".into()));
 }
