@@ -70,6 +70,14 @@ pub mod methods {
     pub const GATE_RECORDING: &str = "GateRecording";
     /// Sequences a transcript through the wake-word gate.
     pub const SEQUENCE_UTTERANCE: &str = "SequenceUtterance";
+    /// Opens a stateful hotkey-driven recording session.
+    pub const SESSION_OPEN: &str = "SessionOpen";
+    /// Applies an input to a recording session and returns the next action.
+    pub const SESSION_ADVANCE: &str = "SessionAdvance";
+    /// Reads a recording session's phase and generation.
+    pub const SESSION_STATUS: &str = "SessionStatus";
+    /// Closes a recording session.
+    pub const SESSION_CLOSE: &str = "SessionClose";
     /// Segments a complete batch of frame energies.
     pub const SEGMENT: &str = "Segment";
     /// Opens a stateful VAD session.
@@ -159,6 +167,10 @@ pub const METHODS: &[&str] = &[
     methods::ROUTE,
     methods::SEGMENT,
     methods::SEQUENCE_UTTERANCE,
+    methods::SESSION_ADVANCE,
+    methods::SESSION_CLOSE,
+    methods::SESSION_OPEN,
+    methods::SESSION_STATUS,
     methods::VAD_CLOSE,
     methods::VAD_IS_SPEAKING,
     methods::VAD_OPEN,
