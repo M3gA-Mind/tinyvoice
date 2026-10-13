@@ -1251,14 +1251,9 @@ async fn recording_session_drives_press_to_finish_over_the_bus() -> tinybus::Res
         status,
         format!(r#"{{"phase":"transcribing","generation":{generation}}}"#)
     );
-    proxy.call::<_, ()>("SessionClose", (id,)).await?;
-    proxy.call::<_, ()>("SessionClose", (id,)).await?;
-    assert!(
-        proxy
-            .call::<_, String>("SessionStatus", (id,))
-            .await
-            .is_err()
-    );
+    proxy.call::<()>("SessionClose", (id,)).await?;
+    proxy.call::<()>("SessionClose", (id,)).await?;
+    assert!(proxy.call::<String>("SessionStatus", (id,)).await.is_err());
     Ok(())
 }
 
@@ -1267,7 +1262,7 @@ async fn recording_session_rejects_unknown_ids_and_bad_input() -> tinybus::Resul
     let proxy = connect().await?;
     assert!(
         proxy
-            .call::<_, String>(
+            .call::<String>(
                 "SessionAdvance",
                 (9_999u64, r#"{"input":"run"}"#.to_string())
             )
@@ -1277,7 +1272,7 @@ async fn recording_session_rejects_unknown_ids_and_bad_input() -> tinybus::Resul
     let id: u64 = proxy.call("SessionOpen", ()).await?;
     assert!(
         proxy
-            .call::<_, String>("SessionAdvance", (id, "not json".to_string()))
+            .call::<String>("SessionAdvance", (id, "not json".to_string()))
             .await
             .is_err()
     );
