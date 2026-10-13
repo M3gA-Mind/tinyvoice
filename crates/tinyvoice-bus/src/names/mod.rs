@@ -66,6 +66,10 @@ pub mod methods {
     pub const WAKE_WORD_PRESENT: &str = "WakeWordPresent";
     /// Detects likely STT hallucinations.
     pub const IS_HALLUCINATED: &str = "IsHallucinated";
+    /// Applies the minimum-duration and silence gates to a finished recording.
+    pub const GATE_RECORDING: &str = "GateRecording";
+    /// Sequences a transcript through the wake-word gate.
+    pub const SEQUENCE_UTTERANCE: &str = "SequenceUtterance";
     /// Segments a complete batch of frame energies.
     pub const SEGMENT: &str = "Segment";
     /// Opens a stateful VAD session.
@@ -120,6 +124,7 @@ pub const METHODS: &[&str] = &[
     methods::ENCODE_WAV_PCM16,
     methods::EXTRACT_COMMAND,
     methods::FRAME_ENERGIES,
+    methods::GATE_RECORDING,
     methods::HOTKEY_FEED,
     methods::HOTKEY_READ,
     methods::HOTKEY_RESERVE,
@@ -153,6 +158,7 @@ pub const METHODS: &[&str] = &[
     methods::RESERVE_CAPTURE,
     methods::ROUTE,
     methods::SEGMENT,
+    methods::SEQUENCE_UTTERANCE,
     methods::VAD_CLOSE,
     methods::VAD_IS_SPEAKING,
     methods::VAD_OPEN,

@@ -4,7 +4,7 @@ This package contains the native `tinyvoice` module for TinyBus module ABI v1.
 Install only the archive matching the host operating system and architecture.
 
 The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
-`/ai/tinyhumans/tinyvoice/Voice`, and provides 47 methods under contract 1.8.
+`/ai/tinyhumans/tinyvoice/Voice`, and provides 49 methods under contract 1.9.
 
 ## Methods
 
@@ -14,6 +14,8 @@ The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
 | `ExtractCommand` | `transcript`, `wake_word` | The command after the wake word, or `""` |
 | `WakeWordPresent` | `transcript`, `wake_word` | `bool` |
 | `IsHallucinated` | `text`, `mode` | `bool` |
+| `GateRecording` | `duration_secs`, `peak_rms`, `min_duration_secs`, `silence_threshold` | JSON `GateVerdict` |
+| `SequenceUtterance` | `transcript`, `wake_word` | JSON `UtteranceDisposition` |
 | `Segment` | `config`, `frame_ms`, `energies` | JSON array of frame-indexed VAD events (one-shot) |
 | `VadOpen` | `config` | session id |
 | `VadPush` | `session`, `frame_ms`, `energies` | JSON array of frame-indexed VAD events |

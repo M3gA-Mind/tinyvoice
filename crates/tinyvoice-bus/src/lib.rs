@@ -19,6 +19,7 @@ pub mod live;
 pub mod names;
 pub mod provider;
 pub mod relay;
+pub mod session;
 pub mod transcript;
 pub mod vad;
 pub mod version;
@@ -31,6 +32,7 @@ pub use provider::{
     CloudVoiceProvider, ProviderFuture, RealtimeRequest, RealtimeSession, SynthesisRequest,
     Transcription, TranscriptionRequest,
 };
+pub use session::{GateVerdict, RecordingGates, SessionPhase, UtteranceDisposition};
 pub use transcript::Mode;
 pub use vad::{IndexedVadEvent, VadConfig, VadEvent};
 

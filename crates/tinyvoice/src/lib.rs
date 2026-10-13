@@ -36,6 +36,8 @@
 //!   stream into utterances.
 //! - [`intent`] — transcript to [`intent::VoiceIntent`], the fast-path
 //!   classifier that lets a host skip an LLM turn.
+//! - [`session`] — the recording session state machine, gates and wake-word
+//!   / fast-path sequencing, driven through host *transcribe* and *deliver* callbacks.
 //! - [`transcript`] — STT hallucination detection.
 //! - [`relay`] — provider-relayed prompt/history extraction and readback classification.
 //! - `hotkey` (cargo feature `hotkey`, off by default) — a system-wide
@@ -62,6 +64,7 @@ pub mod hotkey;
 pub mod intent;
 pub mod live;
 pub mod relay;
+pub mod session;
 pub mod transcript;
 pub mod vad;
 
