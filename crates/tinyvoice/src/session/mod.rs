@@ -10,6 +10,9 @@ use crate::intent::{self, VoiceIntent};
 use crate::transcript::{self, Mode};
 pub use tinyvoice_bus::session::{GateVerdict, RecordingGates, SessionPhase, UtteranceDisposition};
 
+mod recorder;
+pub use recorder::HotkeyRecorder;
+
 /// A run state whose updates are tied to the recording that requested them.
 ///
 /// A slow transcription finishing after the user has already started the next
@@ -67,6 +70,21 @@ impl RecordingSession {
     /// Begin a recording. Only valid when `Idle`; returns the new generation.
     pub fn begin_recording(&mut self) -> Option<u64> {
         if self.phase != SessionPhase::Idle {
+            return None;
+        }
+        self.generation += 1;
+        self.phase = SessionPhase::Recording;
+        Some(self.generation)
+    }
+
+    /// Begin a recording from `Idle` **or** `Transcribing`; returns the new generation.
+    ///
+    /// A hotkey press while the previous recording is still being transcribed
+    /// must start the next one, so rapid consecutive presses are never missed.
+    /// The new generation makes the older pipeline's updates stale. Refused
+    /// when `Stopped` or already `Recording`.
+    pub fn restart_recording(&mut self) -> Option<u64> {
+        if matches!(self.phase, SessionPhase::Stopped | SessionPhase::Recording) {
             return None;
         }
         self.generation += 1;
