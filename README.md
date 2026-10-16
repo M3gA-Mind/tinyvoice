@@ -1,6 +1,6 @@
 # TinyVoice
 
-Host-agnostic voice primitives, extracted from [OpenHuman](https://github.com/tinyhumansai/openhuman): WAV framing, silence gating, voice-activity segmentation, wake-word gating, fast-path command routing, STT hallucination detection, and relay-turn preparation.
+Host-agnostic voice primitives, extracted from [OpenHuman](https://github.com/tinyhumansai/openhuman): WAV framing and voice-note codecs, silence gating, voice-activity segmentation, wake-word gating, fast-path command routing, STT hallucination detection, and relay-turn preparation.
 
 Ships two things from one repository:
 
@@ -25,6 +25,7 @@ permission check.
 | Here | With the host |
 | --- | --- |
 | WAV framing, RMS, resampling, downmix, silence gate; module-owned capture threads | Microphone permission decisions through the computer module |
+| In-memory WAV/PCM16, Ogg/Opus, and M4A/AAC-LC probe, transcode, and waveform APIs | Codec calls through the `tinyvoice-bus` module contract |
 | VAD segmentation | The capture loop that drives it |
 | Wake-word gate, intent routing | What to *do* with an intent |
 | Hallucination detection | The STT transport, credentials, and retry policy |
@@ -65,6 +66,11 @@ turn. It performs no inference or tool execution. A module host uses the
 `PrepareRelayTurn` operation with the minimal `tinyvoice-bus` value types;
 OpenHuman supplies its local agent, acknowledgment policy and delivery.
 See the [relay contract](docs/specs/relay-turn-preparation.md).
+
+The [`tinyvoice::codec` API](docs/specs/voice-codecs.md) detects, probes,
+transcodes, and extracts waveform peaks from supported voice-note formats. It
+uses pure-Rust codecs and in-memory containers; it does not require FFmpeg or
+system codec libraries.
 
 ### Optional features
 

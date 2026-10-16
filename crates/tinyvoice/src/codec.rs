@@ -229,6 +229,13 @@ fn decode_symphonia(
         .and_then(|params| params.audio())
         .ok_or_else(|| codec_error("audio codec parameters are missing"))?
         .clone();
+    if codec == AudioCodec::WavPcm16
+        && codec_params.codec != symphonia::core::codecs::audio::well_known::CODEC_ID_PCM_S16LE
+    {
+        return Err(codec_error(
+            "only signed 16-bit little-endian PCM WAV is supported",
+        ));
+    }
     let rate = codec_params
         .sample_rate
         .ok_or_else(|| codec_error("audio sample rate is missing"))?;
