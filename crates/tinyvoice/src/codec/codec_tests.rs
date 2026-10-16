@@ -56,8 +56,13 @@ fn adts_splitter_rejects_bad_and_truncated_frames() {
 
 #[test]
 fn waveform_bucket_indices_use_wide_math_for_32_bit_audio_limits() -> Result<()> {
-    let sample_count = usize::try_from(u32::MAX).map_err(codec_error_from)?;
+    let clip_samples = 23 * 48_000;
     let buckets = 4096;
+    let (start, end) = waveform_bucket_range(clip_samples, buckets, buckets - 1)?;
+    assert_eq!(start, (buckets - 1) * clip_samples / buckets);
+    assert_eq!(end, clip_samples);
+
+    let sample_count = usize::try_from(u32::MAX).map_err(codec_error_from)?;
     let index = buckets - 1;
     assert!(
         u32::try_from(sample_count)
