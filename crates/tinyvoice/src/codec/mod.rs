@@ -474,9 +474,9 @@ fn encode_aac_m4a(samples: &[f32]) -> Result<Vec<u8>> {
 
 /// Repair the MP4 muxer's empty `SLConfig` descriptor and add a gapless edit.
 ///
-/// `mp4` 0.14 writes an empty `SLConfig` descriptor, although ISO/IEC 14496-1
-/// requires the predefined value byte. Add that byte and increase every
-/// enclosing atom/descriptor length. The edit list clips AAC's 1024-sample
+/// `mp4` 0.14 writes an empty-valued `SLConfig` descriptor placeholder, while
+/// ISO/IEC 14496-1 requires its one-byte predefined value. Fill that existing
+/// byte without changing atom sizes. The edit list clips AAC's 1024-sample
 /// frame padding to the original PCM duration.
 #[allow(clippy::too_many_lines)]
 fn repair_m4a(mut bytes: Vec<u8>, duration_samples: usize) -> Result<Vec<u8>> {
@@ -499,49 +499,12 @@ fn repair_m4a(mut bytes: Vec<u8>, duration_samples: usize) -> Result<Vec<u8>> {
         .rposition(|window| window == [0x06, 0x00, 0x00])
         .and_then(|offset| descriptor_start.checked_add(offset))
         .ok_or_else(|| codec_error("M4A AAC decoder configuration has no SLConfig descriptor"))?;
-    let es_length = esds_type
-        .checked_add(9)
-        .ok_or_else(|| codec_error("M4A descriptor offset overflow"))?;
-    let es_size = bytes
-        .get_mut(es_length)
-        .ok_or_else(|| codec_error("truncated M4A ES descriptor"))?;
-    *es_size = es_size
-        .checked_add(1)
-        .ok_or_else(|| codec_error("M4A descriptor is too large"))?;
     *bytes
         .get_mut(sl_config + 1)
         .ok_or_else(|| codec_error("truncated M4A SLConfig descriptor"))? = 1;
-    let ancestors = [
-        b"esds".as_slice(),
-        b"mp4a",
-        b"stsd",
-        b"stbl",
-        b"minf",
-        b"mdia",
-        b"trak",
-        b"moov",
-    ];
-    for atom_type in ancestors {
-        let type_position = find_last(&bytes[..sl_config], atom_type)
-            .ok_or_else(|| codec_error("M4A atom hierarchy is incomplete"))?;
-        let size_position = type_position
-            .checked_sub(4)
-            .ok_or_else(|| codec_error("invalid M4A atom position"))?;
-        let size = read_be_u32(&bytes, size_position)?;
-        let size_end = size_position
-            .checked_add(4)
-            .ok_or_else(|| codec_error("M4A atom position overflow"))?;
-        bytes
-            .get_mut(size_position..size_end)
-            .ok_or_else(|| codec_error("truncated M4A atom size"))?
-            .copy_from_slice(
-                &size
-                    .checked_add(1)
-                    .ok_or_else(|| codec_error("M4A atom is too large"))?
-                    .to_be_bytes(),
-            );
-    }
-    bytes.insert(sl_config + 3, 2);
+    *bytes
+        .get_mut(sl_config + 2)
+        .ok_or_else(|| codec_error("truncated M4A SLConfig predefined value"))? = 2;
 
     let mdia_type =
         find_last(&bytes, b"mdia").ok_or_else(|| codec_error("M4A media atom is missing"))?;
