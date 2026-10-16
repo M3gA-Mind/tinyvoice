@@ -11,13 +11,16 @@ const MP3_FIXTURE: &[u8] = include_bytes!("fixtures/mp3-test.bit");
 fn window_rms(bytes: &[u8], sample_rate: u32, window_ms: usize) -> Vec<f64> {
     let samples = bytes
         .chunks_exact(2)
-        .map(|sample| i16::from_le_bytes([sample[0], sample[1]]) as f64 / i16::MAX as f64)
+        .map(|sample| f64::from(i16::from_le_bytes([sample[0], sample[1]])) / f64::from(i16::MAX))
         .collect::<Vec<_>>();
     let window = sample_rate as usize * window_ms / 1_000;
     samples
         .chunks(window)
         .map(|window| {
-            (window.iter().map(|sample| sample * sample).sum::<f64>() / window.len() as f64).sqrt()
+            let (sum, count) = window.iter().fold((0.0, 0.0), |(sum, count), sample| {
+                (sum + sample * sample, count + 1.0)
+            });
+            (sum / count).sqrt()
         })
         .collect()
 }
@@ -200,7 +203,7 @@ fn same_format_opus_transcode_normalizes_stereo_to_mono_48khz() -> Result<()> {
 }
 
 #[test]
-fn malformed_and_truncated_audio_are_rejected() {
+fn malformed_and_truncated_audio_are_rejected() -> Result<()> {
     assert!(codec::probe(b"not audio").is_err());
     assert!(codec::probe(&VOICE_ENVELOPE_FIXTURE[..VOICE_ENVELOPE_FIXTURE.len() - 10]).is_err());
     assert!(codec::waveform(VOICE_ENVELOPE_FIXTURE, 0).is_err());
@@ -209,8 +212,7 @@ fn malformed_and_truncated_audio_are_rejected() {
         VOICE_ENVELOPE_FIXTURE,
         AudioCodec::WavPcm16,
         AudioCodec::OggOpus,
-    )
-    .expect("valid fixture encodes");
+    )?;
     assert!(codec::probe(&truncated_opus[..truncated_opus.len() / 2]).is_err());
     assert!(
         codec::transcode(
@@ -224,8 +226,7 @@ fn malformed_and_truncated_audio_are_rejected() {
         VOICE_ENVELOPE_FIXTURE,
         AudioCodec::WavPcm16,
         AudioCodec::M4aAac,
-    )
-    .expect("valid fixture encodes");
+    )?;
     assert!(codec::probe(&truncated_aac[..truncated_aac.len() / 2]).is_err());
     assert!(
         codec::transcode(
@@ -235,4 +236,5 @@ fn malformed_and_truncated_audio_are_rejected() {
         )
         .is_err()
     );
+    Ok(())
 }
