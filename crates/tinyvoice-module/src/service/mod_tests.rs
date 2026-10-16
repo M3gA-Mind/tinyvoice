@@ -33,15 +33,17 @@ async fn codec_work_is_offloaded_and_rejects_when_capacity_is_full() {
         .clone()
         .try_acquire_owned()
         .expect("test takes the only codec worker slot");
-    assert!(super::run_codec_worker(semaphore.clone(), || Ok(())).await.is_err());
+    assert!(
+        super::run_codec_worker(semaphore.clone(), || Ok(()))
+            .await
+            .is_err()
+    );
     drop(held);
 
     let executor_thread = std::thread::current().id();
-    let worker_thread = super::run_codec_worker(semaphore, || {
-        Ok(std::thread::current().id())
-    })
-    .await
-    .expect("available codec worker runs");
+    let worker_thread = super::run_codec_worker(semaphore, || Ok(std::thread::current().id()))
+        .await
+        .expect("available codec worker runs");
     assert_ne!(worker_thread, executor_thread);
 }
 
