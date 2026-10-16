@@ -23,6 +23,34 @@ fn decoded_duration_limit_scales_with_input_sample_rate() {
 }
 
 #[test]
+fn invalid_wav_sample_rates_and_channel_counts_are_rejected() -> Result<()> {
+    for (sample_rate, channels) in [(1_000, 1), (48_000, 9)] {
+        let spec = hound::WavSpec {
+            channels,
+            sample_rate,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut writer = hound::WavWriter::new(Vec::new(), spec).map_err(codec_error_from)?;
+        for _ in 0..usize::from(channels) {
+            writer.write_sample(1200i16).map_err(codec_error_from)?;
+        }
+        writer.finalize().map_err(codec_error_from)?;
+        let bytes = writer.into_inner();
+        assert!(probe(&bytes).is_err());
+    }
+    Ok(())
+}
+
+#[test]
+fn symphonia_rejects_the_dedicated_ogg_codec_and_short_aac_output() -> Result<()> {
+    let wav = audio::f32_mono_to_wav(&[0.2; 960], VOICE_RATE)?;
+    assert!(decode_symphonia(&wav, AudioCodec::OggOpus, "wav").is_err());
+    assert!(encode_aac_m4a(&[0.2]).is_err());
+    Ok(())
+}
+
+#[test]
 fn transcode_rejects_a_mismatched_source_declaration() {
     assert!(transcode(b"not a wav", AudioCodec::WavPcm16, AudioCodec::OggOpus).is_err());
 }
