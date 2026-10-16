@@ -26,3 +26,4 @@ worktrees/*
 .idea/
 .vscode/
 *.swp
+/live-module-coverage.json

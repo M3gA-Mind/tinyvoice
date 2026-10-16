@@ -20,10 +20,32 @@ use tinybus::broker::Broker;
 use tinybus::transport::memory::MemoryBus;
 use tinybus::{Connection, Interface};
 use tinyvoice_bus::{
-    ActivationMode, HostKeyFact, HotkeyFeedRequest, HotkeyHandleRequest, HotkeyReadRequest,
-    HotkeyRequest, HotkeyReserveRequest, HotkeySource, SequencedHostFact,
+    ActivationMode, AudioCodec, CodecInfo, CodecInput, CodecOutput, CodecTranscodeRequest,
+    HostKeyFact, HotkeyFeedRequest, HotkeyHandleRequest, HotkeyReadRequest, HotkeyRequest,
+    HotkeyReserveRequest, HotkeySource, SequencedHostFact, WaveformRequest, WaveformResult,
 };
 use tinyvoice_bus::{BUS_NAME, OBJECT_PATH, names};
+
+#[tokio::test(flavor = "current_thread")]
+async fn codec_work_is_offloaded_and_rejects_when_capacity_is_full() {
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(1));
+    let held = semaphore
+        .clone()
+        .try_acquire_owned()
+        .expect("test takes the only codec worker slot");
+    assert!(
+        super::run_codec_worker(semaphore.clone(), || Ok(()))
+            .await
+            .is_err()
+    );
+    drop(held);
+
+    let executor_thread = std::thread::current().id();
+    let worker_thread = super::run_codec_worker(semaphore, || Ok(std::thread::current().id()))
+        .await
+        .expect("available codec worker runs");
+    assert_ne!(worker_thread, executor_thread);
+}
 
 /// A live bus with the interface served on it.
 ///
@@ -94,6 +116,52 @@ async fn route_returns_a_tagged_intent() -> tinybus::Result<()> {
     let value: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
 
     assert_eq!(value["intent"], "pause");
+    Ok(())
+}
+
+#[tokio::test]
+async fn voice_note_codec_methods_are_available_over_the_module_contract() -> tinybus::Result<()> {
+    let proxy = connect().await?;
+    let wav = include_bytes!("../../../tinyvoice/tests/fixtures/voice-envelope.wav");
+    let encoded = BASE64.encode(wav);
+
+    let info: CodecInfo = proxy
+        .call(
+            "CodecProbe",
+            (CodecInput {
+                audio_base64: encoded.clone(),
+            },),
+        )
+        .await?;
+    assert_eq!(info.codec, AudioCodec::WavPcm16);
+    assert_eq!(info.channels, 1);
+
+    let waveform: WaveformResult = proxy
+        .call(
+            "CodecWaveform",
+            (WaveformRequest {
+                audio_base64: encoded.clone(),
+                buckets: 256,
+            },),
+        )
+        .await?;
+    assert_eq!(waveform.peaks.len(), 256);
+    assert!(waveform.peaks.iter().any(|peak| *peak > 0));
+
+    let opus: CodecOutput = proxy
+        .call(
+            "CodecTranscode",
+            (CodecTranscodeRequest {
+                audio_base64: encoded,
+                from: AudioCodec::WavPcm16,
+                target: AudioCodec::OggOpus,
+            },),
+        )
+        .await?;
+    let opus = base64::engine::general_purpose::STANDARD
+        .decode(opus.audio_base64)
+        .expect("module returns valid base64");
+    assert!(opus.starts_with(b"OggS"));
     Ok(())
 }
 

@@ -31,6 +31,15 @@ use tinyvoice::vad::{VadConfig, VadSegmenter};
 /// an allocation failure.
 pub const MAX_AUDIO_BYTES: usize = 8 * 1024 * 1024;
 
+/// Concurrent in-memory codec operations; excess calls fail fast instead of
+/// allowing attacker-controlled encoded payloads to build an unbounded queue.
+const MAX_CODEC_WORKERS: usize = 2;
+
+static CODEC_WORKERS: std::sync::LazyLock<std::sync::Arc<tokio::sync::Semaphore>> =
+    std::sync::LazyLock::new(|| {
+        std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_CODEC_WORKERS))
+    });
+
 /// Most sessions a caller may hold open at once.
 ///
 /// A session is opened by `VadOpen` and only released by `VadClose`, and a
@@ -152,6 +161,26 @@ fn encode_samples(samples: &[f32]) -> String {
     BASE64.encode(bytes)
 }
 
+/// Run CPU-heavy, bounded codec work away from the async module worker.
+async fn run_codec_worker<T, F>(
+    semaphore: std::sync::Arc<tokio::sync::Semaphore>,
+    operation: F,
+) -> TinyBusResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> TinyBusResult<T> + Send + 'static,
+{
+    let permit = semaphore
+        .try_acquire_owned()
+        .map_err(|_| tinybus::Error::failed("voice codec worker pool is at capacity"))?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        operation()
+    })
+    .await
+    .map_err(|_| tinybus::Error::failed("voice codec worker failed"))?
+}
+
 /// The error for a session id that is not open.
 ///
 /// Its own function so the wording is identical across the four methods that
@@ -198,9 +227,10 @@ fn to_json<T: serde::Serialize>(value: &T) -> TinyBusResult<String> {
     clippy::unused_async,
     reason = "TinyBus interface methods require async signatures"
 )]
-#[expect(
+#[allow(unknown_lints)]
+#[allow(
     clippy::unused_async_trait_impl,
-    reason = "TinyBus interface methods must retain async signatures at this dynamic module boundary"
+    reason = "TinyBus interface dispatch awaits every declared async method"
 )]
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.Voice")]
 impl VoiceService {
@@ -752,6 +782,61 @@ impl VoiceService {
         Ok(BASE64.encode(wav))
     }
 
+    /// Decode a complete in-memory media file and report its audio properties.
+    async fn codec_probe(
+        &self,
+        request: tinyvoice_bus::codec::CodecInput,
+    ) -> TinyBusResult<tinyvoice_bus::codec::CodecInfo> {
+        run_codec_worker(CODEC_WORKERS.clone(), move || {
+            let bytes = decode_audio(&request.audio_base64)?;
+            let info = tinyvoice::codec::probe(&bytes).map_err(|error| failed(&error))?;
+            Ok(tinyvoice_bus::codec::CodecInfo {
+                codec: bus_codec(info.codec)?,
+                duration_ms: info.duration_ms,
+                sample_rate: info.sample_rate,
+                channels: info.channels,
+            })
+        })
+        .await
+    }
+
+    /// Transcode one complete in-memory voice note to the requested format.
+    async fn codec_transcode(
+        &self,
+        request: tinyvoice_bus::codec::CodecTranscodeRequest,
+    ) -> TinyBusResult<tinyvoice_bus::codec::CodecOutput> {
+        run_codec_worker(CODEC_WORKERS.clone(), move || {
+            let bytes = decode_audio(&request.audio_base64)?;
+            let from = library_codec(request.from);
+            let target = library_codec(request.target);
+            let output = tinyvoice::codec::transcode(&bytes, from, target)
+                .map_err(|error| failed(&error))?;
+            if output.len() > MAX_AUDIO_BYTES {
+                return Err(tinybus::Error::failed(format!(
+                    "transcoded audio exceeds the {MAX_AUDIO_BYTES} byte limit"
+                )));
+            }
+            Ok(tinyvoice_bus::codec::CodecOutput {
+                audio_base64: BASE64.encode(output),
+            })
+        })
+        .await
+    }
+
+    /// Decode audio and return normalized peak amplitudes for fixed buckets.
+    async fn codec_waveform(
+        &self,
+        request: tinyvoice_bus::codec::WaveformRequest,
+    ) -> TinyBusResult<tinyvoice_bus::codec::WaveformResult> {
+        run_codec_worker(CODEC_WORKERS.clone(), move || {
+            let bytes = decode_audio(&request.audio_base64)?;
+            let peaks = tinyvoice::codec::waveform(&bytes, request.buckets)
+                .map_err(|error| failed(&error))?;
+            Ok(tinyvoice_bus::codec::WaveformResult { peaks })
+        })
+        .await
+    }
+
     /// Downmix, resample, and silence-gate a captured buffer, returning WAV.
     ///
     /// This is the whole capture-side pipeline in one call, because a host that
@@ -844,6 +929,29 @@ impl VoiceService {
     }
 }
 
+fn library_codec(codec: tinyvoice_bus::codec::AudioCodec) -> tinyvoice::codec::AudioCodec {
+    match codec {
+        tinyvoice_bus::codec::AudioCodec::WavPcm16 => tinyvoice::codec::AudioCodec::WavPcm16,
+        tinyvoice_bus::codec::AudioCodec::OggOpus => tinyvoice::codec::AudioCodec::OggOpus,
+        tinyvoice_bus::codec::AudioCodec::M4aAac => tinyvoice::codec::AudioCodec::M4aAac,
+        tinyvoice_bus::codec::AudioCodec::Mp3 => tinyvoice::codec::AudioCodec::Mp3,
+    }
+}
+
+fn bus_codec(
+    codec: tinyvoice::codec::AudioCodec,
+) -> TinyBusResult<tinyvoice_bus::codec::AudioCodec> {
+    match codec {
+        tinyvoice::codec::AudioCodec::WavPcm16 => Ok(tinyvoice_bus::codec::AudioCodec::WavPcm16),
+        tinyvoice::codec::AudioCodec::OggOpus => Ok(tinyvoice_bus::codec::AudioCodec::OggOpus),
+        tinyvoice::codec::AudioCodec::M4aAac => Ok(tinyvoice_bus::codec::AudioCodec::M4aAac),
+        tinyvoice::codec::AudioCodec::Mp3 => Ok(tinyvoice_bus::codec::AudioCodec::Mp3),
+        _ => Err(tinybus::Error::failed(
+            "codec is not available on the voice bus",
+        )),
+    }
+}
+
 /// Claim the bus name and serve the interface.
 async fn setup(connection: Connection) -> TinyBusResult<()> {
     connection
@@ -903,6 +1011,9 @@ tinybus_module::module_export_optional_static! {
         "CaptureShutdown",
         "EncodeWav",
         "EncodeWavPcm16",
+        "CodecProbe",
+        "CodecTranscode",
+        "CodecWaveform",
         "PrepareCapture",
         "ListInputDevices",
         "RecordingStart",
