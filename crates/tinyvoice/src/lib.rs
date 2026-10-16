@@ -57,6 +57,7 @@
 mod error;
 
 pub mod audio;
+pub mod codec;
 #[cfg(feature = "capture")]
 pub mod capture;
 #[cfg(feature = "hotkey")]

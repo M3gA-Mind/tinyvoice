@@ -19,6 +19,16 @@ serde_json = "1"
 tinyvoice-bus = { version = "0.1.4", path = "../tinyvoice-bus" }
 # Derive macros for the crate-wide error type in `src/error/mod.rs`.
 thiserror = "2"
+# Pure-Rust Opus encoding, decoding, and Ogg encapsulation for voice clips.
+opus-pure = "0.2.2"
+# Pure-Rust AAC-LC encoder for M4A output.
+oxideav-aac = "0.1.7"
+# Pure-Rust audio container/codecs for AAC-in-M4A and PCM WAV input.
+symphonia = { version = "0.6.1", default-features = false, features = ["aac", "isomp4", "pcm", "wav"] }
+# In-memory ISO-MP4 muxing for AAC access units.
+mp4 = "0.14"
+# MP4 sample payload buffer type used by the in-memory muxer.
+bytes = "1"
 
 # `hotkey` only: the global keyboard listener and its plumbing.
 rdev = { version = "0.5", optional = true }

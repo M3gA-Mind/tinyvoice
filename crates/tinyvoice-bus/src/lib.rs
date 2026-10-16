@@ -13,6 +13,7 @@
 mod error;
 
 pub mod capture;
+pub mod codec;
 pub mod hotkey;
 pub mod intent;
 pub mod live;
@@ -26,6 +27,7 @@ pub mod version;
 
 pub use error::{Error, Result};
 pub use hotkey::*;
+pub use codec::{CodecInfo, CodecInput, CodecOutput, CodecTranscodeRequest, WaveformRequest, WaveformResult};
 pub use intent::VoiceIntent;
 pub use names::{BUS_NAME, METHODS, OBJECT_PATH};
 pub use provider::{

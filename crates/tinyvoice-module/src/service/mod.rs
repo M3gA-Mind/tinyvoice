@@ -752,6 +752,50 @@ impl VoiceService {
         Ok(BASE64.encode(wav))
     }
 
+    /// Decode a complete in-memory media file and report its audio properties.
+    async fn codec_probe(
+        &self,
+        request: tinyvoice_bus::codec::CodecInput,
+    ) -> TinyBusResult<tinyvoice_bus::codec::CodecInfo> {
+        let bytes = decode_audio(&request.audio_base64)?;
+        let info = tinyvoice::codec::probe(&bytes).map_err(|error| failed(&error))?;
+        Ok(tinyvoice_bus::codec::CodecInfo {
+            codec: bus_codec(info.codec),
+            duration_ms: info.duration_ms,
+            sample_rate: info.sample_rate,
+            channels: info.channels,
+        })
+    }
+
+    /// Transcode one complete in-memory voice note to the requested format.
+    async fn codec_transcode(
+        &self,
+        request: tinyvoice_bus::codec::CodecTranscodeRequest,
+    ) -> TinyBusResult<tinyvoice_bus::codec::CodecOutput> {
+        let bytes = decode_audio(&request.audio_base64)?;
+        let target = library_codec(request.target);
+        let output = tinyvoice::codec::transcode(&bytes, target).map_err(|error| failed(&error))?;
+        if output.len() > MAX_AUDIO_BYTES {
+            return Err(tinybus::Error::failed(format!(
+                "transcoded audio exceeds the {MAX_AUDIO_BYTES} byte limit"
+            )));
+        }
+        Ok(tinyvoice_bus::codec::CodecOutput {
+            audio_base64: BASE64.encode(output),
+        })
+    }
+
+    /// Decode audio and return normalized peak amplitudes for fixed buckets.
+    async fn codec_waveform(
+        &self,
+        request: tinyvoice_bus::codec::WaveformRequest,
+    ) -> TinyBusResult<tinyvoice_bus::codec::WaveformResult> {
+        let bytes = decode_audio(&request.audio_base64)?;
+        let peaks = tinyvoice::codec::waveform(&bytes, request.buckets)
+            .map_err(|error| failed(&error))?;
+        Ok(tinyvoice_bus::codec::WaveformResult { peaks })
+    }
+
     /// Downmix, resample, and silence-gate a captured buffer, returning WAV.
     ///
     /// This is the whole capture-side pipeline in one call, because a host that
@@ -844,6 +888,22 @@ impl VoiceService {
     }
 }
 
+fn library_codec(codec: tinyvoice_bus::codec::AudioCodec) -> tinyvoice::codec::AudioCodec {
+    match codec {
+        tinyvoice_bus::codec::AudioCodec::WavPcm16 => tinyvoice::codec::AudioCodec::WavPcm16,
+        tinyvoice_bus::codec::AudioCodec::OggOpus => tinyvoice::codec::AudioCodec::OggOpus,
+        tinyvoice_bus::codec::AudioCodec::M4aAac => tinyvoice::codec::AudioCodec::M4aAac,
+    }
+}
+
+fn bus_codec(codec: tinyvoice::codec::AudioCodec) -> tinyvoice_bus::codec::AudioCodec {
+    match codec {
+        tinyvoice::codec::AudioCodec::WavPcm16 => tinyvoice_bus::codec::AudioCodec::WavPcm16,
+        tinyvoice::codec::AudioCodec::OggOpus => tinyvoice_bus::codec::AudioCodec::OggOpus,
+        tinyvoice::codec::AudioCodec::M4aAac => tinyvoice_bus::codec::AudioCodec::M4aAac,
+    }
+}
+
 /// Claim the bus name and serve the interface.
 async fn setup(connection: Connection) -> TinyBusResult<()> {
     connection
@@ -903,6 +963,9 @@ tinybus_module::module_export_optional_static! {
         "CaptureShutdown",
         "EncodeWav",
         "EncodeWavPcm16",
+        "CodecProbe",
+        "CodecTranscode",
+        "CodecWaveform",
         "PrepareCapture",
         "ListInputDevices",
         "RecordingStart",
