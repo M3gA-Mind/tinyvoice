@@ -760,7 +760,7 @@ impl VoiceService {
         let bytes = decode_audio(&request.audio_base64)?;
         let info = tinyvoice::codec::probe(&bytes).map_err(|error| failed(&error))?;
         Ok(tinyvoice_bus::codec::CodecInfo {
-            codec: bus_codec(info.codec),
+            codec: bus_codec(info.codec)?,
             duration_ms: info.duration_ms,
             sample_rate: info.sample_rate,
             channels: info.channels,
@@ -896,11 +896,12 @@ fn library_codec(codec: tinyvoice_bus::codec::AudioCodec) -> tinyvoice::codec::A
     }
 }
 
-fn bus_codec(codec: tinyvoice::codec::AudioCodec) -> tinyvoice_bus::codec::AudioCodec {
+fn bus_codec(codec: tinyvoice::codec::AudioCodec) -> TinyBusResult<tinyvoice_bus::codec::AudioCodec> {
     match codec {
-        tinyvoice::codec::AudioCodec::WavPcm16 => tinyvoice_bus::codec::AudioCodec::WavPcm16,
-        tinyvoice::codec::AudioCodec::OggOpus => tinyvoice_bus::codec::AudioCodec::OggOpus,
-        tinyvoice::codec::AudioCodec::M4aAac => tinyvoice_bus::codec::AudioCodec::M4aAac,
+        tinyvoice::codec::AudioCodec::WavPcm16 => Ok(tinyvoice_bus::codec::AudioCodec::WavPcm16),
+        tinyvoice::codec::AudioCodec::OggOpus => Ok(tinyvoice_bus::codec::AudioCodec::OggOpus),
+        tinyvoice::codec::AudioCodec::M4aAac => Ok(tinyvoice_bus::codec::AudioCodec::M4aAac),
+        _ => Err(tinybus::Error::failed("codec is not available on the voice bus")),
     }
 }
 
