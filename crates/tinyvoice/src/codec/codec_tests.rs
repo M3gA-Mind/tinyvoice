@@ -78,27 +78,6 @@ fn aac_frame_padding_is_bounded_and_only_applies_to_the_decode_stage() {
 #[test]
 fn five_minute_m4a_trims_real_aac_frame_padding_and_rejects_longer_duration() -> Result<()> {
     let exact = five_minute_silent_aac_fixture(48_000 * 300)?;
-    let parsed = mp4::Mp4Reader::read_header(Cursor::new(exact.clone()), exact.len() as u64)
-        .map_err(codec_error_from)?;
-    eprintln!(
-        "movie timescale={} duration={:?} tracks={:?}",
-        parsed.timescale(),
-        parsed.duration(),
-        parsed
-            .tracks()
-            .values()
-            .map(|track| (
-                track.timescale(),
-                track.duration(),
-                track
-                    .trak
-                    .edts
-                    .as_ref()
-                    .and_then(|edts| edts.elst.as_ref())
-                    .map(|elst| elst.entries.clone())
-            ))
-            .collect::<Vec<_>>()
-    );
     assert_eq!(probe(&exact)?.duration_ms, 300_000);
 
     let over = five_minute_silent_aac_fixture(48_000 * 300 + 1)?;

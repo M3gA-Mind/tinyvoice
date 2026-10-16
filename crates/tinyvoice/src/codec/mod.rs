@@ -340,10 +340,9 @@ fn decode_symphonia(
                 audio_track.trak.mdia.mdhd.duration,
                 audio_track.trak.mdia.mdhd.timescale,
             ));
-        let duration_numerator = u128::from(duration_units) * 1_000_000_000;
         let duration_denominator = u128::from(duration_timescale);
         if duration_timescale == 0
-            || duration_numerator > u128::from(MAX_DURATION_SECONDS) * duration_denominator
+            || u128::from(duration_units) > u128::from(MAX_DURATION_SECONDS) * duration_denominator
         {
             return Err(codec_error("M4A duration exceeds the five minute limit"));
         }
