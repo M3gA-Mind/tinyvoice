@@ -24,21 +24,16 @@ fn decoded_duration_limit_scales_with_input_sample_rate() {
 
 #[test]
 fn invalid_wav_sample_rates_and_channel_counts_are_rejected() -> Result<()> {
-    for (sample_rate, channels) in [(1_000, 1), (48_000, 9)] {
-        let spec = hound::WavSpec {
-            channels,
-            sample_rate,
-            bits_per_sample: 16,
-            sample_format: hound::SampleFormat::Int,
-        };
-        let mut writer = hound::WavWriter::new(Vec::new(), spec).map_err(codec_error_from)?;
-        for _ in 0..usize::from(channels) {
-            writer.write_sample(1200i16).map_err(codec_error_from)?;
-        }
-        writer.finalize().map_err(codec_error_from)?;
-        let bytes = writer.into_inner();
-        assert!(probe(&bytes).is_err());
-    }
+    let mut low_rate = audio::f32_mono_to_wav(&[0.2; 960], VOICE_RATE)?;
+    low_rate[24..28].copy_from_slice(&1_000u32.to_le_bytes());
+    low_rate[28..32].copy_from_slice(&2_000u32.to_le_bytes());
+    assert!(probe(&low_rate).is_err());
+
+    let mut many_channels = audio::f32_mono_to_wav(&[0.2; 9], VOICE_RATE)?;
+    many_channels[22..24].copy_from_slice(&9u16.to_le_bytes());
+    many_channels[28..32].copy_from_slice(&(48_000u32 * 9 * 2).to_le_bytes());
+    many_channels[32..34].copy_from_slice(&(9u16 * 2).to_le_bytes());
+    assert!(probe(&many_channels).is_err());
     Ok(())
 }
 
