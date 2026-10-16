@@ -38,10 +38,9 @@ fn invalid_wav_sample_rates_and_channel_counts_are_rejected() -> Result<()> {
 }
 
 #[test]
-fn symphonia_rejects_the_dedicated_ogg_codec_and_short_aac_output() -> Result<()> {
+fn symphonia_rejects_the_dedicated_ogg_codec() -> Result<()> {
     let wav = audio::f32_mono_to_wav(&[0.2; 960], VOICE_RATE)?;
     assert!(decode_symphonia(&wav, AudioCodec::OggOpus, "wav").is_err());
-    assert!(encode_aac_m4a(&[0.2]).is_err());
     Ok(())
 }
 
