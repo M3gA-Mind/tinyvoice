@@ -20,7 +20,10 @@ fn m4a_sl_config_descriptor_has_its_required_predefined_byte() -> Result<()> {
         .windows(2)
         .position(|window| window == [0x06, 0x00])
         .ok_or_else(|| codec_error("missing raw SLConfig descriptor"))?;
-    assert_eq!(&raw_descriptors[raw_sl_config..raw_sl_config + 3], &[0x06, 0x00, 0x00]);
+    assert_eq!(
+        &raw_descriptors[raw_sl_config..raw_sl_config + 3],
+        &[0x06, 0x00, 0x00]
+    );
 
     let m4a = repair_m4a(raw_m4a, duration_samples)?;
     let esds_type = find_last(&m4a, b"esds").ok_or_else(|| codec_error("missing esds"))?;
