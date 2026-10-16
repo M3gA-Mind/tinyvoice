@@ -9,6 +9,28 @@ fn m4a_repair_rejects_invalid_muxer_output_without_panicking() {
 }
 
 #[test]
+fn m4a_sl_config_descriptor_has_its_required_predefined_byte() -> Result<()> {
+    let m4a = stereo_aac_fixture()?;
+    let esds_type = find_last(&m4a, b"esds").ok_or_else(|| codec_error("missing esds"))?;
+    let esds_start = esds_type - 4;
+    let esds_end = esds_start + read_be_u32(&m4a, esds_start)? as usize;
+    let descriptor_start = esds_type + 8;
+    let descriptors = m4a
+        .get(descriptor_start..esds_end)
+        .ok_or_else(|| codec_error("truncated esds"))?;
+    let sl_config = descriptors
+        .windows(2)
+        .position(|window| window == [0x06, 0x01])
+        .ok_or_else(|| codec_error("missing SLConfig descriptor"))?;
+    assert_eq!(&descriptors[sl_config..sl_config + 3], &[0x06, 0x01, 0x02]);
+    assert!(
+        probe(&m4a).is_ok(),
+        "repaired M4A remains independently parseable"
+    );
+    Ok(())
+}
+
+#[test]
 fn normalized_waveform_peak_uses_the_full_byte_range() {
     assert_eq!(normalized_peak_byte(0.0), 0);
     assert_eq!(normalized_peak_byte(0.5), 128);
