@@ -435,7 +435,7 @@ fn multi_track_aac_fixture() -> Result<Vec<u8>> {
                     track_id,
                     &Mp4Sample {
                         start_time,
-                        duration: AAC_FRAME_SAMPLES as u32,
+                        duration: u32::try_from(AAC_FRAME_SAMPLES).map_err(codec_error_from)?,
                         rendering_offset: 0,
                         is_sync: true,
                         bytes: Bytes::copy_from_slice(frame),
