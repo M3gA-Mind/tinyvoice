@@ -26,6 +26,25 @@ use tinyvoice_bus::{
 };
 use tinyvoice_bus::{BUS_NAME, OBJECT_PATH, names};
 
+#[tokio::test(flavor = "current_thread")]
+async fn codec_work_is_offloaded_and_rejects_when_capacity_is_full() {
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(1));
+    let held = semaphore
+        .clone()
+        .try_acquire_owned()
+        .expect("test takes the only codec worker slot");
+    assert!(super::run_codec_worker(semaphore.clone(), || Ok(())).await.is_err());
+    drop(held);
+
+    let executor_thread = std::thread::current().id();
+    let worker_thread = super::run_codec_worker(semaphore, || {
+        Ok(std::thread::current().id())
+    })
+    .await
+    .expect("available codec worker runs");
+    assert_ne!(worker_thread, executor_thread);
+}
+
 /// A live bus with the interface served on it.
 ///
 /// The service `Connection` is held here rather than dropped at the end of
