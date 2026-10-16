@@ -352,19 +352,26 @@ fn m4a_playable_samples(
     rate: u32,
     decoded_samples: usize,
 ) -> Result<usize> {
-    let (duration_units, duration_timescale) = audio_track
+    let edit_list = audio_track
         .trak
         .edts
         .as_ref()
-        .and_then(|edts| edts.elst.as_ref())
-        .and_then(|elst| elst.entries.first())
-        .map_or(
-            (
-                audio_track.trak.mdia.mdhd.duration,
-                audio_track.trak.mdia.mdhd.timescale,
-            ),
-            |entry| (entry.segment_duration, mp4.timescale()),
-        );
+        .and_then(|edts| edts.elst.as_ref());
+    let (duration_units, duration_timescale) = if let Some(elst) = edit_list {
+        let duration_units = elst
+            .entries
+            .iter()
+            .try_fold(0u64, |total, entry| {
+                total.checked_add(entry.segment_duration)
+            })
+            .ok_or_else(|| codec_error("M4A edit list duration overflows"))?;
+        (duration_units, mp4.timescale())
+    } else {
+        (
+            audio_track.trak.mdia.mdhd.duration,
+            audio_track.trak.mdia.mdhd.timescale,
+        )
+    };
     if duration_timescale == 0
         || u128::from(duration_units)
             > u128::from(MAX_DURATION_SECONDS) * u128::from(duration_timescale)
