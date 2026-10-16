@@ -86,6 +86,47 @@ fn five_minute_m4a_trims_real_aac_frame_padding_and_rejects_longer_duration() ->
 }
 
 #[test]
+fn m4a_duration_uses_the_selected_symphonia_track_id() -> Result<()> {
+    let bytes = multi_track_aac_fixture()?;
+    let mut hint = Hint::new();
+    hint.with_extension("m4a");
+    let source = MediaSourceStream::new(
+        Box::new(Cursor::new(bytes.clone())),
+        symphonia::core::io::MediaSourceStreamOptions::default(),
+    );
+    let format = symphonia::default::get_probe()
+        .probe(
+            &hint,
+            source,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
+        .map_err(codec_error_from)?;
+    let selected_track_id = format
+        .default_track(symphonia::core::formats::TrackType::Audio)
+        .ok_or_else(|| codec_error("test M4A has no default audio track"))?
+        .id;
+    let mp4 = mp4::Mp4Reader::read_header(Cursor::new(bytes.clone()), bytes.len() as u64)
+        .map_err(codec_error_from)?;
+    let selected = mp4
+        .tracks()
+        .get(&selected_track_id)
+        .ok_or_else(|| codec_error("Symphonia ID does not match MP4 track ID"))?;
+    let other = mp4
+        .tracks()
+        .values()
+        .find(|track| track.track_id() != selected_track_id)
+        .ok_or_else(|| codec_error("test M4A is missing its second audio track"))?;
+    assert_ne!(selected.duration(), other.duration());
+
+    let (_, samples, rate, _) = decode_symphonia(&bytes, AudioCodec::M4aAac, "m4a")?;
+    let expected = m4a_playable_samples(&mp4, selected_track_id, rate, usize::MAX)?;
+    assert_eq!(samples.len(), expected);
+    assert_eq!(expected, usize::try_from(selected.duration().as_micros() * u128::from(rate) / 1_000_000).map_err(codec_error_from)?);
+    Ok(())
+}
+
+#[test]
 fn invalid_wav_sample_rates_and_channel_counts_are_rejected() -> Result<()> {
     let mut low_rate = audio::f32_mono_to_wav(&[0.2; 960], VOICE_RATE)?;
     low_rate[24..28].copy_from_slice(&1_000u32.to_le_bytes());
@@ -337,6 +378,67 @@ fn five_minute_silent_aac_fixture(duration_samples: usize) -> Result<Vec<u8>> {
     }
     writer.write_end().map_err(codec_error_from)?;
     repair_m4a(writer.into_writer().into_inner(), duration_samples)
+}
+
+fn multi_track_aac_fixture() -> Result<Vec<u8>> {
+    use bytes::Bytes;
+    use mp4::{
+        AacConfig, AudioObjectType, ChannelConfig, FourCC, MediaConfig, Mp4Config, Mp4Sample,
+        Mp4Writer, SampleFreqIndex, TrackConfig, TrackType,
+    };
+    use oxideav_aac::encoder::{EncoderConfig, StreamEncoder};
+
+    let mut encoder = StreamEncoder::new(EncoderConfig {
+        sample_rate: 48_000,
+        channels: 2,
+        bitrate: 128_000,
+    })
+    .map_err(codec_error_from)?;
+    let adts = encoder
+        .encode_all(&vec![4_000; AAC_FRAME_SAMPLES * 12 * 2])
+        .map_err(codec_error_from)?;
+    let frames = aac_frames(&adts)?;
+    let track = TrackConfig {
+        track_type: TrackType::Audio,
+        timescale: VOICE_RATE,
+        language: "und".into(),
+        media_conf: MediaConfig::AacConfig(AacConfig {
+            bitrate: 128_000,
+            profile: AudioObjectType::AacLowComplexity,
+            freq_index: SampleFreqIndex::Freq48000,
+            chan_conf: ChannelConfig::Stereo,
+        }),
+    };
+    let config = Mp4Config {
+        major_brand: FourCC::from(*b"M4A "),
+        minor_version: 0,
+        compatible_brands: vec![FourCC::from(*b"M4A "), FourCC::from(*b"isom")],
+        timescale: VOICE_RATE,
+    };
+    let mut writer =
+        Mp4Writer::write_start(Cursor::new(Vec::new()), &config).map_err(codec_error_from)?;
+    writer.add_track(&track).map_err(codec_error_from)?;
+    writer.add_track(&track).map_err(codec_error_from)?;
+    for (track_id, frame_count) in [(1, 4), (2, 9)] {
+        let mut start_time = 0u64;
+        for frame in frames.iter().skip(1).take(frame_count) {
+            writer
+                .write_sample(
+                    track_id,
+                    &Mp4Sample {
+                        start_time,
+                        duration: AAC_FRAME_SAMPLES as u32,
+                        rendering_offset: 0,
+                        is_sync: true,
+                        bytes: Bytes::copy_from_slice(frame),
+                    },
+                )
+                .map_err(codec_error_from)?;
+            start_time += AAC_FRAME_SAMPLES as u64;
+        }
+    }
+    writer.write_end().map_err(codec_error_from)?;
+    Ok(writer.into_writer().into_inner())
 }
 
 fn aac_frames(adts: &[u8]) -> Result<Vec<&[u8]>> {

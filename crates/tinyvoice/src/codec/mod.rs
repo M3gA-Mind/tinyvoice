@@ -320,16 +320,7 @@ fn decode_symphonia(
     if codec == AudioCodec::M4aAac {
         let mp4 = mp4::Mp4Reader::read_header(Cursor::new(bytes.to_vec()), bytes.len() as u64)
             .map_err(codec_error_from)?;
-        let audio_track = mp4
-            .tracks()
-            .values()
-            .find(|track| {
-                track
-                    .track_type()
-                    .is_ok_and(|kind| kind == mp4::TrackType::Audio)
-            })
-            .ok_or_else(|| codec_error("M4A audio track is missing"))?;
-        let playable_samples = m4a_playable_samples(&mp4, audio_track, rate, samples.len())?;
+        let playable_samples = m4a_playable_samples(&mp4, track_id, rate, samples.len())?;
         if !within_duration(playable_samples, rate) || playable_samples > MAX_DECODED_SAMPLES {
             return Err(codec_error("decoded audio exceeds the five minute limit"));
         }
@@ -348,10 +339,19 @@ fn decode_symphonia(
 
 fn m4a_playable_samples(
     mp4: &mp4::Mp4Reader<Cursor<Vec<u8>>>,
-    audio_track: &mp4::Mp4Track,
+    track_id: u32,
     rate: u32,
     decoded_samples: usize,
 ) -> Result<usize> {
+    let audio_track = mp4
+        .tracks()
+        .get(&track_id)
+        .filter(|track| {
+            track
+                .track_type()
+                .is_ok_and(|kind| kind == mp4::TrackType::Audio)
+        })
+        .ok_or_else(|| codec_error("decoded M4A audio track metadata is missing"))?;
     let edit_list = audio_track
         .trak
         .edts
