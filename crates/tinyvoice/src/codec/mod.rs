@@ -51,6 +51,7 @@ const MAX_DECODED_SAMPLES: usize = 32_000_000;
 const MAX_DURATION_SECONDS: u64 = 300;
 const VOICE_RATE: u32 = 48_000;
 const OPUS_FRAME: usize = 960;
+const AAC_FRAME_SAMPLES: usize = 1024;
 const AAC_BITRATE: u32 = 64_000;
 
 /// Detect a supported input, validate and decode it, then report its facts.
@@ -306,7 +307,13 @@ fn decode_symphonia(
             &symphonia::core::codecs::audio::AudioDecoderOptions::default(),
         )
         .map_err(codec_error_from)?;
-    let (mut samples, channel_count) = decode_packets(&mut *format, track_id, &mut *decoder, rate)?;
+    let decoder_padding = if codec == AudioCodec::M4aAac {
+        AAC_FRAME_SAMPLES
+    } else {
+        0
+    };
+    let (mut samples, channel_count) =
+        decode_packets(&mut *format, track_id, &mut *decoder, rate, decoder_padding)?;
     if samples.is_empty() {
         return Err(codec_error("audio contains no samples"));
     }
@@ -315,6 +322,9 @@ fn decode_symphonia(
             .map_err(codec_error_from)?;
         let playable_samples = (mp4.duration().as_nanos() * u128::from(rate) / 1_000_000_000)
             .min(samples.len() as u128) as usize;
+        if !within_duration(playable_samples, rate) || playable_samples > MAX_DECODED_SAMPLES {
+            return Err(codec_error("decoded audio exceeds the five minute limit"));
+        }
         samples.truncate(playable_samples);
         if samples.is_empty() {
             return Err(codec_error("M4A audio duration is empty"));
@@ -333,6 +343,7 @@ fn decode_packets(
     track_id: u32,
     decoder: &mut dyn AudioDecoder,
     rate: u32,
+    decoder_padding: usize,
 ) -> Result<(Vec<f32>, usize)> {
     let mut samples = Vec::new();
     let mut channel_count = 0usize;
@@ -365,7 +376,9 @@ fn decode_packets(
                     / f32::from(u8::try_from(channels).map_err(codec_error_from)?),
             );
         }
-        if !within_duration(samples.len(), rate) || samples.len() > MAX_DECODED_SAMPLES {
+        if !within_duration_with_padding(samples.len(), rate, decoder_padding)
+            || samples.len() > MAX_DECODED_SAMPLES
+        {
             return Err(codec_error("decoded audio exceeds the five minute limit"));
         }
     }
@@ -651,7 +664,14 @@ fn codec_error_from(error: impl std::fmt::Display) -> Error {
 }
 
 fn within_duration(samples: usize, sample_rate: u32) -> bool {
-    u64::try_from(samples).is_ok_and(|count| count <= u64::from(sample_rate) * MAX_DURATION_SECONDS)
+    within_duration_with_padding(samples, sample_rate, 0)
+}
+
+fn within_duration_with_padding(samples: usize, sample_rate: u32, padding_samples: usize) -> bool {
+    let maximum = u64::from(sample_rate)
+        .saturating_mul(MAX_DURATION_SECONDS)
+        .saturating_add(u64::try_from(padding_samples).unwrap_or(u64::MAX));
+    u64::try_from(samples).is_ok_and(|count| count <= maximum)
 }
 
 /// Convert clamped normalized PCM to the encoder's signed integer range.

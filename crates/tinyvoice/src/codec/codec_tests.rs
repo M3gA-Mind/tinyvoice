@@ -45,6 +45,22 @@ fn decoded_duration_limit_scales_with_input_sample_rate() {
 }
 
 #[test]
+fn aac_frame_padding_is_bounded_and_only_applies_to_the_decode_stage() {
+    let five_minutes = 48_000usize * 300;
+    assert!(within_duration_with_padding(
+        five_minutes + AAC_FRAME_SAMPLES,
+        48_000,
+        AAC_FRAME_SAMPLES
+    ));
+    assert!(!within_duration_with_padding(
+        five_minutes + AAC_FRAME_SAMPLES + 1,
+        48_000,
+        AAC_FRAME_SAMPLES
+    ));
+    assert!(!within_duration(five_minutes + 1, 48_000));
+}
+
+#[test]
 fn invalid_wav_sample_rates_and_channel_counts_are_rejected() -> Result<()> {
     let mut low_rate = audio::f32_mono_to_wav(&[0.2; 960], VOICE_RATE)?;
     low_rate[24..28].copy_from_slice(&1_000u32.to_le_bytes());
