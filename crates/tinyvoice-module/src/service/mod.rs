@@ -227,6 +227,7 @@ fn to_json<T: serde::Serialize>(value: &T) -> TinyBusResult<String> {
     clippy::unused_async,
     reason = "TinyBus interface methods require async signatures"
 )]
+#[allow(unknown_lints)]
 #[allow(
     clippy::unused_async_trait_impl,
     reason = "TinyBus interface dispatch awaits every declared async method"
