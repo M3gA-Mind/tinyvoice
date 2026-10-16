@@ -124,10 +124,7 @@ pub fn waveform(bytes: &[u8], buckets: usize) -> Result<Vec<u8>> {
     }
     let mut peaks = Vec::with_capacity(buckets);
     for bucket in 0..buckets {
-        let start = bucket * samples.len() / buckets;
-        let end = ((bucket + 1) * samples.len() / buckets)
-            .max(start + 1)
-            .min(samples.len());
+        let (start, end) = waveform_bucket_range(samples.len(), buckets, bucket)?;
         let peak = samples[start..end]
             .iter()
             .fold(0.0f32, |largest, sample| largest.max(sample.abs()));
@@ -141,6 +138,21 @@ pub fn waveform(bytes: &[u8], buckets: usize) -> Result<Vec<u8>> {
         .into_iter()
         .map(|peak| normalized_peak_byte(peak / max_peak))
         .collect())
+}
+
+fn waveform_bucket_range(
+    sample_count: usize,
+    bucket_count: usize,
+    index: usize,
+) -> Result<(usize, usize)> {
+    let sample_count_u128 = u128::try_from(sample_count).map_err(codec_error_from)?;
+    let bucket_count_u128 = u128::try_from(bucket_count).map_err(codec_error_from)?;
+    let index_u128 = u128::try_from(index).map_err(codec_error_from)?;
+    let start = usize::try_from(index_u128 * sample_count_u128 / bucket_count_u128)
+        .map_err(codec_error_from)?;
+    let end = usize::try_from((index_u128 + 1) * sample_count_u128 / bucket_count_u128)
+        .map_err(codec_error_from)?;
+    Ok((start, end.max(start.saturating_add(1)).min(sample_count)))
 }
 
 /// Convert a known finite amplitude ratio in `[0, 1]` to its byte scale.
