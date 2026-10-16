@@ -25,9 +25,12 @@ pub mod transcript;
 pub mod vad;
 pub mod version;
 
+pub use codec::{
+    AudioCodec, CodecInfo, CodecInput, CodecOutput, CodecTranscodeRequest, WaveformRequest,
+    WaveformResult,
+};
 pub use error::{Error, Result};
 pub use hotkey::*;
-pub use codec::{CodecInfo, CodecInput, CodecOutput, CodecTranscodeRequest, WaveformRequest, WaveformResult};
 pub use intent::VoiceIntent;
 pub use names::{BUS_NAME, METHODS, OBJECT_PATH};
 pub use provider::{

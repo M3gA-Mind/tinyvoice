@@ -12,6 +12,8 @@ pub enum AudioCodec {
     OggOpus,
     /// AAC-LC audio in M4A.
     M4aAac,
+    /// MPEG Layer III audio (source format).
+    Mp3,
 }
 
 /// Input bytes encoded as standard Base64.
@@ -26,6 +28,8 @@ pub struct CodecInput {
 pub struct CodecTranscodeRequest {
     /// Base64-encoded source media.
     pub audio_base64: String,
+    /// Declared source container and codec, checked against the payload.
+    pub from: AudioCodec,
     /// Destination container and codec.
     pub target: AudioCodec,
 }

@@ -11,7 +11,8 @@ use opus_pure::{
     OpusHead, Trim,
 };
 use symphonia::core::{
-    formats::{FormatOptions, probe::Hint},
+    codecs::audio::AudioDecoder,
+    formats::{FormatOptions, FormatReader, probe::Hint},
     io::MediaSourceStream,
     meta::MetadataOptions,
 };
@@ -28,6 +29,8 @@ pub enum AudioCodec {
     OggOpus,
     /// AAC-LC audio in an M4A/ISO-BMFF container.
     M4aAac,
+    /// MPEG Layer III audio (typically returned by text-to-speech services).
+    Mp3,
 }
 
 /// Container facts obtained by [`probe`].
@@ -44,7 +47,8 @@ pub struct AudioInfo {
 }
 
 const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
-const MAX_DECODED_SAMPLES: usize = 48_000 * 300;
+const MAX_DECODED_SAMPLES: usize = 32_000_000;
+const MAX_DURATION_SECONDS: u64 = 300;
 const VOICE_RATE: u32 = 48_000;
 const OPUS_FRAME: usize = 960;
 const AAC_BITRATE: u32 = 64_000;
@@ -66,17 +70,18 @@ pub fn probe(bytes: &[u8]) -> Result<AudioInfo> {
     })
 }
 
-/// Convert supported audio to the requested voice-note format.
+/// Convert bytes in `from` format to the requested voice-note format.
 ///
-/// Conversions decode to mono 48 kHz first. Requests already in their target
-/// format return the original bytes unchanged.
+/// The declared source format is checked against the encoded input. Encoded
+/// output is mono 48 kHz; WAV-to-WAV requests preserve original bytes. MP3 is
+/// accepted as a source format but is not an encoding target.
 ///
 /// # Errors
 ///
 /// Returns [`Error::AudioCodec`] when input or output audio cannot be handled.
-pub fn transcode(bytes: &[u8], target: AudioCodec) -> Result<Vec<u8>> {
-    let (source, samples, rate, _) = decode(bytes)?;
-    if source == target {
+pub fn transcode(bytes: &[u8], from: AudioCodec, target: AudioCodec) -> Result<Vec<u8>> {
+    let (source, samples, rate, _) = decode_as(bytes, from)?;
+    if source == target && source == AudioCodec::WavPcm16 {
         return Ok(bytes.to_vec());
     }
     let samples = if rate == VOICE_RATE {
@@ -88,6 +93,7 @@ pub fn transcode(bytes: &[u8], target: AudioCodec) -> Result<Vec<u8>> {
         AudioCodec::WavPcm16 => audio::f32_mono_to_wav(&samples, VOICE_RATE),
         AudioCodec::OggOpus => encode_opus(&samples),
         AudioCodec::M4aAac => encode_aac_m4a(&samples),
+        AudioCodec::Mp3 => Err(codec_error("MP3 encoding is not supported")),
     }
 }
 
@@ -156,9 +162,43 @@ fn decode(bytes: &[u8]) -> Result<(AudioCodec, Vec<f32>, u32, u16)> {
         decode_symphonia(bytes, AudioCodec::WavPcm16, "wav")
     } else if bytes.get(4..8) == Some(b"ftyp") {
         decode_symphonia(bytes, AudioCodec::M4aAac, "m4a")
+    } else if looks_like_mp3(bytes) {
+        decode_symphonia(bytes, AudioCodec::Mp3, "mp3")
     } else {
         Err(codec_error("unsupported audio container"))
     }
+}
+
+fn decode_as(bytes: &[u8], expected: AudioCodec) -> Result<(AudioCodec, Vec<f32>, u32, u16)> {
+    if bytes.is_empty() || bytes.len() > MAX_INPUT_BYTES {
+        return Err(codec_error(
+            "audio input is empty or exceeds the 32 MiB limit",
+        ));
+    }
+    let decoded = match expected {
+        AudioCodec::OggOpus if bytes.starts_with(b"OggS") => decode_opus(bytes)
+            .map(|(samples, rate, channels)| (AudioCodec::OggOpus, samples, rate, channels)),
+        AudioCodec::WavPcm16 if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WAVE") => {
+            decode_symphonia(bytes, AudioCodec::WavPcm16, "wav")
+        }
+        AudioCodec::M4aAac if bytes.get(4..8) == Some(b"ftyp") => {
+            decode_symphonia(bytes, AudioCodec::M4aAac, "m4a")
+        }
+        AudioCodec::Mp3 if looks_like_mp3(bytes) => decode_symphonia(bytes, AudioCodec::Mp3, "mp3"),
+        _ => {
+            return Err(codec_error(
+                "audio input does not match the declared source codec",
+            ));
+        }
+    }?;
+    Ok(decoded)
+}
+
+fn looks_like_mp3(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"ID3")
+        || bytes
+            .get(..2)
+            .is_some_and(|header| header[0] == 0xff && header[1] & 0xe0 == 0xe0)
 }
 
 fn decode_opus(bytes: &[u8]) -> Result<(Vec<f32>, u32, u16)> {
@@ -184,7 +224,7 @@ fn decode_opus(bytes: &[u8]) -> Result<(Vec<f32>, u32, u16)> {
         for frame in trimmed.chunks_exact(channels) {
             mono.push(frame.iter().sum::<f32>() / f32::from(head.channel_count));
         }
-        if mono.len() > MAX_DECODED_SAMPLES {
+        if !within_duration(mono.len(), VOICE_RATE) {
             return Err(codec_error("decoded audio exceeds the five minute limit"));
         }
     }
@@ -229,18 +269,24 @@ fn decode_symphonia(
         .and_then(|params| params.audio())
         .ok_or_else(|| codec_error("audio codec parameters are missing"))?
         .clone();
-    if codec == AudioCodec::WavPcm16
-        && codec_params.codec != symphonia::core::codecs::audio::well_known::CODEC_ID_PCM_S16LE
-    {
+    let expected_codec = match codec {
+        AudioCodec::WavPcm16 => symphonia::core::codecs::audio::well_known::CODEC_ID_PCM_S16LE,
+        AudioCodec::M4aAac => symphonia::core::codecs::audio::well_known::CODEC_ID_AAC,
+        AudioCodec::Mp3 => symphonia::core::codecs::audio::well_known::CODEC_ID_MP3,
+        AudioCodec::OggOpus => return Err(codec_error("Ogg Opus uses its dedicated decoder")),
+    };
+    if codec_params.codec != expected_codec {
         return Err(codec_error(
-            "only signed 16-bit little-endian PCM WAV is supported",
+            "audio stream does not match its declared codec",
         ));
     }
     let rate = codec_params
         .sample_rate
         .ok_or_else(|| codec_error("audio sample rate is missing"))?;
-    if rate == 0 {
-        return Err(codec_error("audio sample rate is zero"));
+    if !(8_000..=192_000).contains(&rate) {
+        return Err(codec_error(
+            "audio sample rate must be between 8 and 192 kHz",
+        ));
     }
     let mut decoder = symphonia::default::get_codecs()
         .make_audio_decoder(
@@ -248,6 +294,34 @@ fn decode_symphonia(
             &symphonia::core::codecs::audio::AudioDecoderOptions::default(),
         )
         .map_err(codec_error_from)?;
+    let (mut samples, channel_count) = decode_packets(&mut *format, track_id, &mut *decoder, rate)?;
+    if samples.is_empty() {
+        return Err(codec_error("audio contains no samples"));
+    }
+    if codec == AudioCodec::M4aAac {
+        let mp4 = mp4::Mp4Reader::read_header(Cursor::new(bytes.to_vec()), bytes.len() as u64)
+            .map_err(codec_error_from)?;
+        let playable_samples = (mp4.duration().as_nanos() * u128::from(rate) / 1_000_000_000)
+            .min(samples.len() as u128) as usize;
+        samples.truncate(playable_samples);
+        if samples.is_empty() {
+            return Err(codec_error("M4A audio duration is empty"));
+        }
+    }
+    Ok((
+        codec,
+        samples,
+        rate,
+        u16::try_from(channel_count).map_err(codec_error_from)?,
+    ))
+}
+
+fn decode_packets(
+    format: &mut dyn FormatReader,
+    track_id: u32,
+    decoder: &mut dyn AudioDecoder,
+    rate: u32,
+) -> Result<(Vec<f32>, usize)> {
     let mut samples = Vec::new();
     let mut channel_count = 0usize;
     loop {
@@ -279,29 +353,11 @@ fn decode_symphonia(
                     / f32::from(u8::try_from(channels).map_err(codec_error_from)?),
             );
         }
-        if samples.len() > MAX_DECODED_SAMPLES {
+        if !within_duration(samples.len(), rate) || samples.len() > MAX_DECODED_SAMPLES {
             return Err(codec_error("decoded audio exceeds the five minute limit"));
         }
     }
-    if samples.is_empty() {
-        return Err(codec_error("audio contains no samples"));
-    }
-    if codec == AudioCodec::M4aAac {
-        let mp4 = mp4::Mp4Reader::read_header(Cursor::new(bytes.to_vec()), bytes.len() as u64)
-            .map_err(codec_error_from)?;
-        let playable_samples = (mp4.duration().as_nanos() * u128::from(rate) / 1_000_000_000)
-            .min(samples.len() as u128) as usize;
-        samples.truncate(playable_samples);
-        if samples.is_empty() {
-            return Err(codec_error("M4A audio duration is empty"));
-        }
-    }
-    Ok((
-        codec,
-        samples,
-        rate,
-        u16::try_from(channel_count).map_err(codec_error_from)?,
-    ))
+    Ok((samples, channel_count))
 }
 
 fn encode_opus(samples: &[f32]) -> Result<Vec<u8>> {
@@ -617,6 +673,10 @@ fn codec_error(message: impl Into<String>) -> Error {
 }
 fn codec_error_from(error: impl std::fmt::Display) -> Error {
     codec_error(error.to_string())
+}
+
+fn within_duration(samples: usize, sample_rate: u32) -> bool {
+    u64::try_from(samples).is_ok_and(|count| count <= u64::from(sample_rate) * MAX_DURATION_SECONDS)
 }
 
 /// Convert clamped normalized PCM to the encoder's signed integer range.

@@ -198,10 +198,6 @@ fn to_json<T: serde::Serialize>(value: &T) -> TinyBusResult<String> {
     clippy::unused_async,
     reason = "TinyBus interface methods require async signatures"
 )]
-#[expect(
-    clippy::unused_async_trait_impl,
-    reason = "TinyBus interface methods must retain async signatures at this dynamic module boundary"
-)]
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.Voice")]
 impl VoiceService {
     /// Fix explicit host scheduling bounds for this module instance.
@@ -773,8 +769,10 @@ impl VoiceService {
         request: tinyvoice_bus::codec::CodecTranscodeRequest,
     ) -> TinyBusResult<tinyvoice_bus::codec::CodecOutput> {
         let bytes = decode_audio(&request.audio_base64)?;
+        let from = library_codec(request.from);
         let target = library_codec(request.target);
-        let output = tinyvoice::codec::transcode(&bytes, target).map_err(|error| failed(&error))?;
+        let output =
+            tinyvoice::codec::transcode(&bytes, from, target).map_err(|error| failed(&error))?;
         if output.len() > MAX_AUDIO_BYTES {
             return Err(tinybus::Error::failed(format!(
                 "transcoded audio exceeds the {MAX_AUDIO_BYTES} byte limit"
@@ -791,8 +789,8 @@ impl VoiceService {
         request: tinyvoice_bus::codec::WaveformRequest,
     ) -> TinyBusResult<tinyvoice_bus::codec::WaveformResult> {
         let bytes = decode_audio(&request.audio_base64)?;
-        let peaks = tinyvoice::codec::waveform(&bytes, request.buckets)
-            .map_err(|error| failed(&error))?;
+        let peaks =
+            tinyvoice::codec::waveform(&bytes, request.buckets).map_err(|error| failed(&error))?;
         Ok(tinyvoice_bus::codec::WaveformResult { peaks })
     }
 
@@ -893,15 +891,21 @@ fn library_codec(codec: tinyvoice_bus::codec::AudioCodec) -> tinyvoice::codec::A
         tinyvoice_bus::codec::AudioCodec::WavPcm16 => tinyvoice::codec::AudioCodec::WavPcm16,
         tinyvoice_bus::codec::AudioCodec::OggOpus => tinyvoice::codec::AudioCodec::OggOpus,
         tinyvoice_bus::codec::AudioCodec::M4aAac => tinyvoice::codec::AudioCodec::M4aAac,
+        tinyvoice_bus::codec::AudioCodec::Mp3 => tinyvoice::codec::AudioCodec::Mp3,
     }
 }
 
-fn bus_codec(codec: tinyvoice::codec::AudioCodec) -> TinyBusResult<tinyvoice_bus::codec::AudioCodec> {
+fn bus_codec(
+    codec: tinyvoice::codec::AudioCodec,
+) -> TinyBusResult<tinyvoice_bus::codec::AudioCodec> {
     match codec {
         tinyvoice::codec::AudioCodec::WavPcm16 => Ok(tinyvoice_bus::codec::AudioCodec::WavPcm16),
         tinyvoice::codec::AudioCodec::OggOpus => Ok(tinyvoice_bus::codec::AudioCodec::OggOpus),
         tinyvoice::codec::AudioCodec::M4aAac => Ok(tinyvoice_bus::codec::AudioCodec::M4aAac),
-        _ => Err(tinybus::Error::failed("codec is not available on the voice bus")),
+        tinyvoice::codec::AudioCodec::Mp3 => Ok(tinyvoice_bus::codec::AudioCodec::Mp3),
+        _ => Err(tinybus::Error::failed(
+            "codec is not available on the voice bus",
+        )),
     }
 }
 

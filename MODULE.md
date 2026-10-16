@@ -11,7 +11,7 @@ The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
 | Method | Arguments | Returns |
 | --- | --- | --- |
 | `CodecProbe` | `CodecInput { audio_base64 }` | `CodecInfo`: detected codec, duration, sample rate, channels |
-| `CodecTranscode` | `CodecTranscodeRequest { audio_base64, target }` | `CodecOutput { audio_base64 }` |
+| `CodecTranscode` | `CodecTranscodeRequest { audio_base64, from, target }` | `CodecOutput { audio_base64 }` |
 | `CodecWaveform` | `WaveformRequest { audio_base64, buckets }` | `WaveformResult { peaks }` |
 | `Route` | `transcript` | JSON `VoiceIntent`, tagged by an `intent` field |
 | `ExtractCommand` | `transcript`, `wake_word` | The command after the wake word, or `""` |

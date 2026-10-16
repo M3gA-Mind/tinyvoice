@@ -24,7 +24,7 @@ opus-pure = "0.2.2"
 # Pure-Rust AAC-LC encoder for M4A output.
 oxideav-aac = "0.1.7"
 # Pure-Rust audio container/codecs for AAC-in-M4A and PCM WAV input.
-symphonia = { version = "0.6.1", default-features = false, features = ["aac", "isomp4", "pcm", "wav"] }
+symphonia = { version = "0.6.1", default-features = false, features = ["aac", "isomp4", "mp3", "pcm", "wav"] }
 # In-memory ISO-MP4 muxing for AAC access units.
 mp4 = "0.14"
 # MP4 sample payload buffer type used by the in-memory muxer.

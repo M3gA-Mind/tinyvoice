@@ -130,13 +130,13 @@ pub mod methods {
 
 /// Every member of [`BUS_NAME`], in the interface's sorted dispatch order.
 pub const METHODS: &[&str] = &[
-    methods::CODEC_PROBE,
-    methods::CODEC_TRANSCODE,
-    methods::CODEC_WAVEFORM,
     methods::CAPTURE_POLL,
     methods::CAPTURE_SHUTDOWN,
     methods::CAPTURE_START,
     methods::CAPTURE_STOP,
+    methods::CODEC_PROBE,
+    methods::CODEC_TRANSCODE,
+    methods::CODEC_WAVEFORM,
     methods::ENCODE_WAV,
     methods::ENCODE_WAV_PCM16,
     methods::EXTRACT_COMMAND,
