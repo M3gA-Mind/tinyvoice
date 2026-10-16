@@ -31,6 +31,15 @@ use tinyvoice::vad::{VadConfig, VadSegmenter};
 /// an allocation failure.
 pub const MAX_AUDIO_BYTES: usize = 8 * 1024 * 1024;
 
+/// Concurrent in-memory codec operations; excess calls fail fast instead of
+/// allowing attacker-controlled encoded payloads to build an unbounded queue.
+const MAX_CODEC_WORKERS: usize = 2;
+
+static CODEC_WORKERS: std::sync::LazyLock<std::sync::Arc<tokio::sync::Semaphore>> =
+    std::sync::LazyLock::new(|| {
+        std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_CODEC_WORKERS))
+    });
+
 /// Most sessions a caller may hold open at once.
 ///
 /// A session is opened by `VadOpen` and only released by `VadClose`, and a
@@ -150,6 +159,26 @@ fn failed(error: &tinyvoice::Error) -> tinybus::Error {
 fn encode_samples(samples: &[f32]) -> String {
     let bytes: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
     BASE64.encode(bytes)
+}
+
+/// Run CPU-heavy, bounded codec work away from the async module worker.
+async fn run_codec_worker<T, F>(
+    semaphore: std::sync::Arc<tokio::sync::Semaphore>,
+    operation: F,
+) -> TinyBusResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> TinyBusResult<T> + Send + 'static,
+{
+    let permit = semaphore
+        .try_acquire_owned()
+        .map_err(|_| tinybus::Error::failed("voice codec worker pool is at capacity"))?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        operation()
+    })
+    .await
+    .map_err(|_| tinybus::Error::failed("voice codec worker failed"))?
 }
 
 /// The error for a session id that is not open.
@@ -753,14 +782,17 @@ impl VoiceService {
         &self,
         request: tinyvoice_bus::codec::CodecInput,
     ) -> TinyBusResult<tinyvoice_bus::codec::CodecInfo> {
-        let bytes = decode_audio(&request.audio_base64)?;
-        let info = tinyvoice::codec::probe(&bytes).map_err(|error| failed(&error))?;
-        Ok(tinyvoice_bus::codec::CodecInfo {
-            codec: bus_codec(info.codec)?,
-            duration_ms: info.duration_ms,
-            sample_rate: info.sample_rate,
-            channels: info.channels,
+        run_codec_worker(CODEC_WORKERS.clone(), move || {
+            let bytes = decode_audio(&request.audio_base64)?;
+            let info = tinyvoice::codec::probe(&bytes).map_err(|error| failed(&error))?;
+            Ok(tinyvoice_bus::codec::CodecInfo {
+                codec: bus_codec(info.codec)?,
+                duration_ms: info.duration_ms,
+                sample_rate: info.sample_rate,
+                channels: info.channels,
+            })
         })
+        .await
     }
 
     /// Transcode one complete in-memory voice note to the requested format.
@@ -768,19 +800,22 @@ impl VoiceService {
         &self,
         request: tinyvoice_bus::codec::CodecTranscodeRequest,
     ) -> TinyBusResult<tinyvoice_bus::codec::CodecOutput> {
-        let bytes = decode_audio(&request.audio_base64)?;
-        let from = library_codec(request.from);
-        let target = library_codec(request.target);
-        let output =
-            tinyvoice::codec::transcode(&bytes, from, target).map_err(|error| failed(&error))?;
-        if output.len() > MAX_AUDIO_BYTES {
-            return Err(tinybus::Error::failed(format!(
-                "transcoded audio exceeds the {MAX_AUDIO_BYTES} byte limit"
-            )));
-        }
-        Ok(tinyvoice_bus::codec::CodecOutput {
-            audio_base64: BASE64.encode(output),
+        run_codec_worker(CODEC_WORKERS.clone(), move || {
+            let bytes = decode_audio(&request.audio_base64)?;
+            let from = library_codec(request.from);
+            let target = library_codec(request.target);
+            let output = tinyvoice::codec::transcode(&bytes, from, target)
+                .map_err(|error| failed(&error))?;
+            if output.len() > MAX_AUDIO_BYTES {
+                return Err(tinybus::Error::failed(format!(
+                    "transcoded audio exceeds the {MAX_AUDIO_BYTES} byte limit"
+                )));
+            }
+            Ok(tinyvoice_bus::codec::CodecOutput {
+                audio_base64: BASE64.encode(output),
+            })
         })
+        .await
     }
 
     /// Decode audio and return normalized peak amplitudes for fixed buckets.
@@ -788,10 +823,13 @@ impl VoiceService {
         &self,
         request: tinyvoice_bus::codec::WaveformRequest,
     ) -> TinyBusResult<tinyvoice_bus::codec::WaveformResult> {
-        let bytes = decode_audio(&request.audio_base64)?;
-        let peaks =
-            tinyvoice::codec::waveform(&bytes, request.buckets).map_err(|error| failed(&error))?;
-        Ok(tinyvoice_bus::codec::WaveformResult { peaks })
+        run_codec_worker(CODEC_WORKERS.clone(), move || {
+            let bytes = decode_audio(&request.audio_base64)?;
+            let peaks = tinyvoice::codec::waveform(&bytes, request.buckets)
+                .map_err(|error| failed(&error))?;
+            Ok(tinyvoice_bus::codec::WaveformResult { peaks })
+        })
+        .await
     }
 
     /// Downmix, resample, and silence-gate a captured buffer, returning WAV.
