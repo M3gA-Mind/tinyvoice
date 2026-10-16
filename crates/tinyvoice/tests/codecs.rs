@@ -239,4 +239,3 @@ fn malformed_and_truncated_audio_are_rejected() -> Result<()> {
     );
     Ok(())
 }
-

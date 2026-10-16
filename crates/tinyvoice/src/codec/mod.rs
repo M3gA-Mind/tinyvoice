@@ -323,11 +323,15 @@ fn decode_symphonia(
         let audio_track = mp4
             .tracks()
             .values()
-            .find(|track| track.track_type().is_ok_and(|kind| kind == mp4::TrackType::Audio))
+            .find(|track| {
+                track
+                    .track_type()
+                    .is_ok_and(|kind| kind == mp4::TrackType::Audio)
+            })
             .ok_or_else(|| codec_error("M4A audio track is missing"))?;
         let container_duration = audio_track.duration();
-        if container_duration.as_secs() > MAX_DURATION_SECS
-            || (container_duration.as_secs() == MAX_DURATION_SECS
+        if container_duration.as_secs() > MAX_DURATION_SECONDS
+            || (container_duration.as_secs() == MAX_DURATION_SECONDS
                 && container_duration.subsec_nanos() > 0)
         {
             return Err(codec_error("M4A duration exceeds the five minute limit"));
