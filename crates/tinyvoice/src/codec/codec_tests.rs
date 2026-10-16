@@ -101,13 +101,13 @@ fn m4a_duration_uses_the_selected_symphonia_track_id() -> Result<()> {
             FormatOptions::default(),
             MetadataOptions::default(),
         )
-        .map_err(codec_error_from)?;
+        .map_err(|error| codec_error(format!("test Symphonia probe failed: {error}")))?;
     let selected_track_id = format
         .default_track(symphonia::core::formats::TrackType::Audio)
         .ok_or_else(|| codec_error("test M4A has no default audio track"))?
         .id;
     let mp4 = mp4::Mp4Reader::read_header(Cursor::new(bytes.clone()), bytes.len() as u64)
-        .map_err(codec_error_from)?;
+        .map_err(|error| codec_error(format!("test MP4 parse failed: {error}")))?;
     let selected = mp4
         .tracks()
         .get(&selected_track_id)
@@ -119,7 +119,8 @@ fn m4a_duration_uses_the_selected_symphonia_track_id() -> Result<()> {
         .ok_or_else(|| codec_error("test M4A is missing its second audio track"))?;
     assert_ne!(selected.duration(), other.duration());
 
-    let (_, samples, rate, _) = decode_symphonia(&bytes, AudioCodec::M4aAac, "m4a")?;
+    let (_, samples, rate, _) = decode_symphonia(&bytes, AudioCodec::M4aAac, "m4a")
+        .map_err(|error| codec_error(format!("test M4A decode failed: {error}")))?;
     let expected = m4a_playable_samples(&mp4, selected_track_id, rate, usize::MAX)?;
     assert_eq!(samples.len(), expected);
     let media_duration = selected.trak.mdia.mdhd.duration;
