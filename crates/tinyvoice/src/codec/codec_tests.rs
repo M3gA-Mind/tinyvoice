@@ -28,6 +28,55 @@ fn transcode_rejects_a_mismatched_source_declaration() {
 }
 
 #[test]
+fn empty_silent_oversized_and_unsupported_codec_inputs_are_rejected() -> Result<()> {
+    assert!(probe(b"").is_err());
+    assert!(waveform(b"", 1).is_err());
+    assert!(transcode(b"", AudioCodec::WavPcm16, AudioCodec::OggOpus).is_err());
+    let oversized = vec![0; MAX_INPUT_BYTES + 1];
+    assert!(probe(&oversized).is_err());
+    assert!(transcode(&oversized, AudioCodec::WavPcm16, AudioCodec::OggOpus).is_err());
+
+    let empty_wav = audio::f32_mono_to_wav(&[], VOICE_RATE)?;
+    assert!(waveform(&empty_wav, 1).is_err());
+
+    let silence = audio::f32_mono_to_wav(&vec![0.0; 960], VOICE_RATE)?;
+    assert_eq!(waveform(&silence, 32)?, vec![0; 32]);
+    assert!(transcode(&silence, AudioCodec::WavPcm16, AudioCodec::Mp3).is_err());
+
+    let short = audio::f32_mono_to_wav(&[0.25], VOICE_RATE)?;
+    assert!(transcode(&short, AudioCodec::WavPcm16, AudioCodec::M4aAac).is_err());
+    Ok(())
+}
+
+#[test]
+fn adts_splitter_rejects_bad_and_truncated_frames() {
+    assert!(split_adts(b"not ADTS").is_err());
+    assert!(split_adts(&[0xff, 0xf1, 0, 0, 0, 0]).is_err());
+    assert!(split_adts(&[0xff, 0xf1, 0, 0, 0, 0, 0]).is_err());
+}
+
+#[test]
+fn an_empty_ogg_opus_stream_has_no_playable_audio() -> Result<()> {
+    let head = OpusHead {
+        version: 1,
+        channel_count: 1,
+        pre_skip: 0,
+        input_sample_rate: VOICE_RATE,
+        output_gain: 0,
+        mapping_family: 0,
+        stream_count: 1,
+        coupled_count: 0,
+        channel_mapping: vec![0],
+    };
+    let bytes = OggOpusWriter::new(Vec::new(), head)
+        .map_err(codec_error_from)?
+        .finish()
+        .map_err(codec_error_from)?;
+    assert!(decode_opus(&bytes).is_err());
+    Ok(())
+}
+
+#[test]
 fn same_format_aac_transcode_normalizes_stereo_to_mono_48khz() -> Result<()> {
     let stereo = stereo_aac_fixture()?;
     let input = probe(&stereo)?;
