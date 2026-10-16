@@ -227,6 +227,10 @@ fn to_json<T: serde::Serialize>(value: &T) -> TinyBusResult<String> {
     clippy::unused_async,
     reason = "TinyBus interface methods require async signatures"
 )]
+#[allow(
+    clippy::unused_async_trait_impl,
+    reason = "TinyBus interface dispatch awaits every declared async method"
+)]
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.Voice")]
 impl VoiceService {
     /// Fix explicit host scheduling bounds for this module instance.

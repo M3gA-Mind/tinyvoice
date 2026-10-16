@@ -9,9 +9,10 @@ const OPUS_INTEROP_FIXTURE: &[u8] = include_bytes!("fixtures/opus-interop.wav");
 const MP3_FIXTURE: &[u8] = include_bytes!("fixtures/mp3-test.bit");
 
 fn window_rms(bytes: &[u8], sample_rate: u32, window_ms: usize) -> Vec<f64> {
-    let samples = bytes
-        .chunks_exact(2)
-        .map(|sample| f64::from(i16::from_le_bytes([sample[0], sample[1]])) / f64::from(i16::MAX))
+    let (sample_bytes, _trailing_byte) = bytes.as_chunks::<2>();
+    let samples = sample_bytes
+        .iter()
+        .map(|sample| f64::from(i16::from_le_bytes(*sample)) / f64::from(i16::MAX))
         .collect::<Vec<_>>();
     let window = sample_rate as usize * window_ms / 1_000;
     samples
