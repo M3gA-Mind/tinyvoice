@@ -10,7 +10,19 @@ fn m4a_repair_rejects_invalid_muxer_output_without_panicking() {
 
 #[test]
 fn m4a_sl_config_descriptor_has_its_required_predefined_byte() -> Result<()> {
-    let m4a = stereo_aac_fixture()?;
+    let (raw_m4a, duration_samples) = stereo_aac_muxed_fixture()?;
+    let raw_esds_type = find_last(&raw_m4a, b"esds").ok_or_else(|| codec_error("missing esds"))?;
+    let raw_esds_end = raw_esds_type - 4 + read_be_u32(&raw_m4a, raw_esds_type - 4)? as usize;
+    let raw_descriptors = raw_m4a
+        .get(raw_esds_type + 8..raw_esds_end)
+        .ok_or_else(|| codec_error("truncated raw esds"))?;
+    let raw_sl_config = raw_descriptors
+        .windows(2)
+        .position(|window| window == [0x06, 0x00])
+        .ok_or_else(|| codec_error("missing raw SLConfig descriptor"))?;
+    assert_eq!(&raw_descriptors[raw_sl_config..raw_sl_config + 3], &[0x06, 0x00, 0x00]);
+
+    let m4a = repair_m4a(raw_m4a, duration_samples)?;
     let esds_type = find_last(&m4a, b"esds").ok_or_else(|| codec_error("missing esds"))?;
     let esds_start = esds_type - 4;
     let esds_end = esds_start + read_be_u32(&m4a, esds_start)? as usize;
@@ -58,6 +70,16 @@ fn aac_frame_padding_is_bounded_and_only_applies_to_the_decode_stage() {
         AAC_FRAME_SAMPLES
     ));
     assert!(!within_duration(five_minutes + 1, 48_000));
+}
+
+#[test]
+fn five_minute_m4a_trims_real_aac_frame_padding_and_rejects_longer_duration() -> Result<()> {
+    let exact = five_minute_silent_aac_fixture(48_000 * 300)?;
+    assert_eq!(probe(&exact)?.duration_ms, 300_000);
+
+    let over = five_minute_silent_aac_fixture(48_000 * 300 + 1)?;
+    assert!(probe(&over).is_err());
+    Ok(())
 }
 
 #[test]
@@ -186,6 +208,11 @@ fn same_format_aac_transcode_normalizes_stereo_to_mono_48khz() -> Result<()> {
 }
 
 fn stereo_aac_fixture() -> Result<Vec<u8>> {
+    let (bytes, duration_samples) = stereo_aac_muxed_fixture()?;
+    repair_m4a(bytes, duration_samples)
+}
+
+fn stereo_aac_muxed_fixture() -> Result<(Vec<u8>, usize)> {
     use bytes::Bytes;
     use mp4::{
         AacConfig, AudioObjectType, ChannelConfig, FourCC, MediaConfig, Mp4Config, Mp4Sample,
@@ -239,7 +266,74 @@ fn stereo_aac_fixture() -> Result<Vec<u8>> {
         start_time += 1024;
     }
     writer.write_end().map_err(codec_error_from)?;
-    repair_m4a(writer.into_writer().into_inner(), 9_600)
+    Ok((writer.into_writer().into_inner(), 9_600))
+}
+
+fn five_minute_silent_aac_fixture(duration_samples: usize) -> Result<Vec<u8>> {
+    use bytes::Bytes;
+    use mp4::{
+        AacConfig, AudioObjectType, ChannelConfig, FourCC, MediaConfig, Mp4Config, Mp4Sample,
+        Mp4Writer, SampleFreqIndex, TrackConfig, TrackType,
+    };
+    use oxideav_aac::encoder::{EncoderConfig, StreamEncoder};
+
+    let mut encoder = StreamEncoder::new(EncoderConfig {
+        sample_rate: 48_000,
+        channels: 1,
+        bitrate: 64_000,
+    })
+    .map_err(codec_error_from)?;
+    let adts = encoder
+        .encode_all(&vec![0; AAC_FRAME_SAMPLES * 2])
+        .map_err(codec_error_from)?;
+    let frame = *aac_frames(&adts)?
+        .get(1)
+        .ok_or_else(|| codec_error("test AAC encoder returned too few frames"))?;
+    let track = TrackConfig {
+        track_type: TrackType::Audio,
+        timescale: VOICE_RATE,
+        language: "und".into(),
+        media_conf: MediaConfig::AacConfig(AacConfig {
+            bitrate: 64_000,
+            profile: AudioObjectType::AacLowComplexity,
+            freq_index: SampleFreqIndex::Freq48000,
+            chan_conf: ChannelConfig::Mono,
+        }),
+    };
+    let config = Mp4Config {
+        major_brand: FourCC::from(*b"M4A "),
+        minor_version: 0,
+        compatible_brands: vec![FourCC::from(*b"M4A "), FourCC::from(*b"isom")],
+        timescale: VOICE_RATE,
+    };
+    let mut writer =
+        Mp4Writer::write_start(Cursor::new(Vec::new()), &config).map_err(codec_error_from)?;
+    writer.add_track(&track).map_err(codec_error_from)?;
+    let full_frames = duration_samples / AAC_FRAME_SAMPLES;
+    let final_duration = duration_samples % AAC_FRAME_SAMPLES;
+    let sample_count = full_frames + usize::from(final_duration > 0);
+    for index in 0..sample_count {
+        let start_time = u64::try_from(index * AAC_FRAME_SAMPLES).map_err(codec_error_from)?;
+        let duration = if index == full_frames && final_duration > 0 {
+            final_duration
+        } else {
+            AAC_FRAME_SAMPLES
+        };
+        writer
+            .write_sample(
+                1,
+                &Mp4Sample {
+                    start_time,
+                    duration: u32::try_from(duration).map_err(codec_error_from)?,
+                    rendering_offset: 0,
+                    is_sync: true,
+                    bytes: Bytes::copy_from_slice(frame),
+                },
+            )
+            .map_err(codec_error_from)?;
+    }
+    writer.write_end().map_err(codec_error_from)?;
+    repair_m4a(writer.into_writer().into_inner(), duration_samples)
 }
 
 fn aac_frames(adts: &[u8]) -> Result<Vec<&[u8]>> {
