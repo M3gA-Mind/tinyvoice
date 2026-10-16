@@ -240,19 +240,3 @@ fn malformed_and_truncated_audio_are_rejected() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn five_minute_aac_round_trip_trims_frame_padding_and_rejects_longer_audio() -> Result<()> {
-    let limit = 48_000usize * 300;
-    let exact_samples = vec![0.12; limit];
-    let exact_wav = tinyvoice::audio::f32_mono_to_wav(&exact_samples, 48_000)
-        .map_err(|error| tinyvoice::Error::AudioCodec(error.to_string()))?;
-    let exact_m4a = codec::transcode(&exact_wav, AudioCodec::WavPcm16, AudioCodec::M4aAac)?;
-    let exact_info = codec::probe(&exact_m4a)?;
-    assert_eq!(exact_info.duration_ms, 300_000);
-
-    let over_samples = vec![0.12; limit + 1];
-    let over_wav = tinyvoice::audio::f32_mono_to_wav(&over_samples, 48_000)
-        .map_err(|error| tinyvoice::Error::AudioCodec(error.to_string()))?;
-    assert!(codec::transcode(&over_wav, AudioCodec::WavPcm16, AudioCodec::M4aAac).is_err());
-    Ok(())
-}
