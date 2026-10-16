@@ -444,7 +444,37 @@ fn multi_track_aac_fixture() -> Result<Vec<u8>> {
         }
     }
     writer.write_end().map_err(codec_error_from)?;
-    Ok(writer.into_writer().into_inner())
+    let mut bytes = writer.into_writer().into_inner();
+    repair_test_sl_config_descriptors(&mut bytes)?;
+    Ok(bytes)
+}
+
+fn repair_test_sl_config_descriptors(bytes: &mut [u8]) -> Result<()> {
+    let esds_types: Vec<usize> = bytes
+        .windows(4)
+        .enumerate()
+        .filter_map(|(index, bytes)| (bytes == b"esds").then_some(index))
+        .collect();
+    for esds_type in esds_types {
+        let atom_start = esds_type
+            .checked_sub(4)
+            .ok_or_else(|| codec_error("invalid test esds atom"))?;
+        let atom_size = read_be_u32(bytes, atom_start)? as usize;
+        let atom_end = atom_start
+            .checked_add(atom_size)
+            .ok_or_else(|| codec_error("test esds size overflow"))?;
+        let descriptor_start = esds_type + 8;
+        let descriptors = bytes
+            .get(descriptor_start..atom_end)
+            .ok_or_else(|| codec_error("truncated test esds"))?;
+        let sl_config = descriptors
+            .windows(2)
+            .position(|window| window == [0x06, 0x00])
+            .ok_or_else(|| codec_error("missing test SLConfig descriptor"))?;
+        bytes[descriptor_start + sl_config + 1] = 1;
+        bytes[descriptor_start + sl_config + 2] = 2;
+    }
+    Ok(())
 }
 
 fn aac_frames(adts: &[u8]) -> Result<Vec<&[u8]>> {
