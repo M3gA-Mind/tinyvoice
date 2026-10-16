@@ -165,7 +165,7 @@ fn decode_symphonia(bytes: &[u8], codec: AudioCodec, extension: &str) -> Result<
     let source = MediaSourceStream::new(Box::new(Cursor::new(bytes.to_vec())), Default::default());
     let mut format = symphonia::default::get_probe()
         .probe(&hint, source, FormatOptions::default(), MetadataOptions::default())
-        .map_err(codec_error_from)?;
+        .map_err(|error| codec_error(format!("audio container probe failed: {error}")))?;
     let track = format.default_track(symphonia::core::formats::TrackType::Audio).ok_or_else(|| codec_error("audio stream has no default track"))?;
     let track_id = track.id;
     let codec_params = track.codec_params.as_ref().and_then(|params| params.audio()).ok_or_else(|| codec_error("audio codec parameters are missing"))?.clone();
@@ -182,10 +182,10 @@ fn decode_symphonia(bytes: &[u8], codec: AudioCodec, extension: &str) -> Result<
         let packet = match format.next_packet() {
             Ok(Some(packet)) => packet,
             Ok(None) => break,
-            Err(error) => return Err(codec_error_from(error)),
+            Err(error) => return Err(codec_error(format!("audio container packet read failed: {error}"))),
         };
         if packet.track_id != track_id { continue; }
-        let decoded = decoder.decode(&packet).map_err(codec_error_from)?;
+        let decoded = decoder.decode(&packet).map_err(|error| codec_error(format!("audio packet decode failed: {error}")))?;
         let channels = decoded.spec().channels().count();
         if channels == 0 || channels > 8 { return Err(codec_error("audio channel count is unsupported")); }
         channel_count = channels;
@@ -199,6 +199,14 @@ fn decode_symphonia(bytes: &[u8], codec: AudioCodec, extension: &str) -> Result<
         }
     }
     if samples.is_empty() { return Err(codec_error("audio contains no samples")); }
+    if codec == AudioCodec::M4aAac {
+        let mp4 = mp4::Mp4Reader::read_header(Cursor::new(bytes.to_vec()), bytes.len() as u64)
+            .map_err(codec_error_from)?;
+        let playable_samples = (mp4.duration().as_nanos() * u128::from(rate) / 1_000_000_000)
+            .min(samples.len() as u128) as usize;
+        samples.truncate(playable_samples);
+        if samples.is_empty() { return Err(codec_error("M4A audio duration is empty")); }
+    }
     Ok((codec, samples, rate, channel_count as u16))
 }
 
@@ -243,13 +251,93 @@ fn encode_aac_m4a(samples: &[f32]) -> Result<Vec<u8>> {
     writer.add_track(&track).map_err(codec_error_from)?;
     let usable = &frames[1..];
     let mut start_time = 0u64;
-    for (index, frame) in usable.iter().enumerate() {
-        let duration = if index + 1 == usable.len() { (samples.len() - index * AAC_FRAME).min(AAC_FRAME) as u32 } else { AAC_FRAME as u32 };
+    for frame in usable {
+        let duration = AAC_FRAME as u32;
         writer.write_sample(1, &Mp4Sample { start_time, duration, rendering_offset: 0, is_sync: true, bytes: Bytes::copy_from_slice(frame) }).map_err(codec_error_from)?;
         start_time += u64::from(duration);
     }
     writer.write_end().map_err(codec_error_from)?;
-    Ok(writer.into_writer().into_inner())
+    repair_m4a(writer.into_writer().into_inner(), samples.len())
+}
+
+/// Repair the MP4 muxer's empty SLConfig descriptor and add a gapless edit.
+///
+/// `mp4` 0.14 writes an empty SLConfig descriptor, although ISO/IEC 14496-1
+/// requires the predefined value byte. Add that byte and increase every
+/// enclosing atom/descriptor length. The edit list clips AAC's 1024-sample
+/// frame padding to the original PCM duration.
+fn repair_m4a(mut bytes: Vec<u8>, duration_samples: usize) -> Result<Vec<u8>> {
+    let esds_type = find_last(&bytes, b"esds").ok_or_else(|| codec_error("M4A muxer omitted the AAC decoder configuration"))?;
+    let esds_start = esds_type.checked_sub(4).ok_or_else(|| codec_error("invalid M4A AAC decoder configuration"))?;
+    let descriptor_end = esds_start.checked_add(read_be_u32(&bytes, esds_start)? as usize)
+        .ok_or_else(|| codec_error("M4A AAC decoder configuration size overflow"))?;
+    let sl_config = bytes[esds_type + 8..descriptor_end]
+        .windows(3)
+        .rposition(|window| window == [0x06, 0x00, 0x00])
+        .map(|offset| esds_type + 8 + offset)
+        .ok_or_else(|| codec_error("M4A AAC decoder configuration has no SLConfig descriptor"))?;
+    let es_length = esds_type + 9;
+    bytes[es_length] = bytes[es_length].checked_add(1).ok_or_else(|| codec_error("M4A descriptor is too large"))?;
+    bytes[sl_config + 1] = 1;
+    let ancestors = [b"esds".as_slice(), b"mp4a", b"stsd", b"stbl", b"minf", b"mdia", b"trak", b"moov"];
+    for atom_type in ancestors {
+        let type_position = find_last(&bytes[..sl_config], atom_type)
+            .ok_or_else(|| codec_error("M4A atom hierarchy is incomplete"))?;
+        let size_position = type_position - 4;
+        let size = read_be_u32(&bytes, size_position)?;
+        bytes[size_position..size_position + 4].copy_from_slice(&size.checked_add(1).ok_or_else(|| codec_error("M4A atom is too large"))?.to_be_bytes());
+    }
+    bytes.insert(sl_config + 3, 2);
+
+    let mdia_type = find_last(&bytes, b"mdia").ok_or_else(|| codec_error("M4A media atom is missing"))?;
+    let trak_type = find_last(&bytes[..mdia_type], b"trak").ok_or_else(|| codec_error("M4A track atom is missing"))?;
+    let movie_type = find_last(&bytes, b"moov").ok_or_else(|| codec_error("M4A movie atom is missing"))?;
+    let edit = edit_list_atom(duration_samples)?;
+    let edit_len = u32::try_from(edit.len()).map_err(codec_error_from)?;
+    for atom_type in [b"trak".as_slice(), b"moov"] {
+        let position = if atom_type == b"trak" { trak_type } else { movie_type };
+        let size_position = position - 4;
+        let size = read_be_u32(&bytes, size_position)?;
+        bytes[size_position..size_position + 4].copy_from_slice(&size.checked_add(edit_len).ok_or_else(|| codec_error("M4A atom is too large"))?.to_be_bytes());
+    }
+    let tkhd_type = find_last(&bytes[..mdia_type], b"tkhd").ok_or_else(|| codec_error("M4A track header is missing"))?;
+    bytes[tkhd_type + 24..tkhd_type + 28].copy_from_slice(&u32::try_from(duration_samples).map_err(codec_error_from)?.to_be_bytes());
+    let mvhd_type = find_last(&bytes[..mdia_type], b"mvhd").ok_or_else(|| codec_error("M4A movie header is missing"))?;
+    bytes[mvhd_type + 20..mvhd_type + 24].copy_from_slice(&u32::try_from(duration_samples).map_err(codec_error_from)?.to_be_bytes());
+    bytes.splice(mdia_type - 4..mdia_type - 4, edit);
+    Ok(bytes)
+}
+
+fn edit_list_atom(duration_samples: usize) -> Result<Vec<u8>> {
+    let duration = u32::try_from(duration_samples).map_err(codec_error_from)?;
+    let mut elst = Vec::with_capacity(28);
+    elst.extend_from_slice(&[0, 0, 0, 0]); // version and flags
+    elst.extend_from_slice(&1u32.to_be_bytes());
+    elst.extend_from_slice(&duration.to_be_bytes());
+    elst.extend_from_slice(&0i32.to_be_bytes()); // no leading media-time trim
+    elst.extend_from_slice(&1i16.to_be_bytes()); // playback rate 1.0
+    elst.extend_from_slice(&0i16.to_be_bytes());
+    let elst = atom(b"elst", &elst)?;
+    atom(b"edts", &elst)
+}
+
+fn atom(kind: &[u8; 4], payload: &[u8]) -> Result<Vec<u8>> {
+    let size = u32::try_from(payload.len().checked_add(8).ok_or_else(|| codec_error("M4A atom size overflow"))?)
+        .map_err(codec_error_from)?;
+    let mut out = Vec::with_capacity(size as usize);
+    out.extend_from_slice(&size.to_be_bytes());
+    out.extend_from_slice(kind);
+    out.extend_from_slice(payload);
+    Ok(out)
+}
+
+fn find_last(bytes: &[u8], needle: &[u8]) -> Option<usize> {
+    bytes.windows(needle.len()).rposition(|window| window == needle)
+}
+
+fn read_be_u32(bytes: &[u8], offset: usize) -> Result<u32> {
+    let data = bytes.get(offset..offset + 4).ok_or_else(|| codec_error("truncated M4A atom"))?;
+    Ok(u32::from_be_bytes([data[0], data[1], data[2], data[3]]))
 }
 
 fn split_adts(bytes: &[u8]) -> Result<Vec<&[u8]>> {
