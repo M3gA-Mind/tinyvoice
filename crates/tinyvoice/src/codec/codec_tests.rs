@@ -58,11 +58,10 @@ fn adts_splitter_rejects_bad_and_truncated_frames() {
 #[test]
 fn an_empty_ogg_opus_stream_has_no_playable_audio() -> Result<()> {
     let head = OpusHead {
-        version: 1,
         channel_count: 1,
         pre_skip: 0,
         input_sample_rate: VOICE_RATE,
-        output_gain: 0,
+        output_gain_q8: 0,
         mapping_family: 0,
         stream_count: 1,
         coupled_count: 0,
