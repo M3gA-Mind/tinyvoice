@@ -55,6 +55,32 @@ fn adts_splitter_rejects_bad_and_truncated_frames() {
 }
 
 #[test]
+fn waveform_bucket_indices_use_wide_math_for_32_bit_audio_limits() -> Result<()> {
+    let sample_count = usize::try_from(u32::MAX).map_err(codec_error_from)?;
+    let buckets = 4096;
+    let index = buckets - 1;
+    assert!(u32::try_from(sample_count)
+        .map_err(codec_error_from)?
+        .checked_mul(u32::try_from(index).map_err(codec_error_from)?)
+        .is_none());
+
+    let expected_start = usize::try_from(
+        (u128::try_from(index).map_err(codec_error_from)?
+            * u128::try_from(sample_count).map_err(codec_error_from)?)
+            / u128::try_from(buckets).map_err(codec_error_from)?,
+    )
+    .map_err(codec_error_from)?;
+    let expected_end = usize::try_from(
+        (u128::try_from(index + 1).map_err(codec_error_from)?
+            * u128::try_from(sample_count).map_err(codec_error_from)?)
+            / u128::try_from(buckets).map_err(codec_error_from)?,
+    )
+    .map_err(codec_error_from)?;
+    assert_eq!(waveform_bucket_range(sample_count, buckets, index)?, (expected_start, expected_end));
+    Ok(())
+}
+
+#[test]
 fn an_empty_ogg_opus_stream_has_no_playable_audio() -> Result<()> {
     let head = OpusHead {
         channel_count: 1,
