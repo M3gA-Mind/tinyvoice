@@ -42,9 +42,8 @@ fn empty_silent_oversized_and_unsupported_codec_inputs_are_rejected() -> Result<
     let silence = audio::f32_mono_to_wav(&vec![0.0; 960], VOICE_RATE)?;
     assert_eq!(waveform(&silence, 32)?, vec![0; 32]);
     assert!(transcode(&silence, AudioCodec::WavPcm16, AudioCodec::Mp3).is_err());
-
-    let short = audio::f32_mono_to_wav(&[0.25], VOICE_RATE)?;
-    assert!(transcode(&short, AudioCodec::WavPcm16, AudioCodec::M4aAac).is_err());
+    assert!(encode_opus(&[]).is_err());
+    assert!(encode_aac_m4a(&[]).is_err());
     Ok(())
 }
 
