@@ -101,7 +101,7 @@ async fn route_returns_a_tagged_intent() -> tinybus::Result<()> {
 #[tokio::test]
 async fn voice_note_codec_methods_are_available_over_the_module_contract() -> tinybus::Result<()> {
     let proxy = connect().await?;
-    let wav = include_bytes!("../../../tinyvoice/tests/fixtures/voice-pop.wav");
+    let wav = include_bytes!("../../../tinyvoice/tests/fixtures/voice-envelope.wav");
     let encoded = BASE64.encode(wav);
 
     let info: CodecInfo = proxy
