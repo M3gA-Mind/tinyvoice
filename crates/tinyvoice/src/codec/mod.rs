@@ -320,7 +320,19 @@ fn decode_symphonia(
     if codec == AudioCodec::M4aAac {
         let mp4 = mp4::Mp4Reader::read_header(Cursor::new(bytes.to_vec()), bytes.len() as u64)
             .map_err(codec_error_from)?;
-        let playable_samples = (mp4.duration().as_nanos() * u128::from(rate) / 1_000_000_000)
+        let audio_track = mp4
+            .tracks()
+            .values()
+            .find(|track| track.track_type().is_ok_and(|kind| kind == mp4::TrackType::Audio))
+            .ok_or_else(|| codec_error("M4A audio track is missing"))?;
+        let container_duration = audio_track.duration();
+        if container_duration.as_secs() > MAX_DURATION_SECS
+            || (container_duration.as_secs() == MAX_DURATION_SECS
+                && container_duration.subsec_nanos() > 0)
+        {
+            return Err(codec_error("M4A duration exceeds the five minute limit"));
+        }
+        let playable_samples = (container_duration.as_nanos() * u128::from(rate) / 1_000_000_000)
             .min(samples.len() as u128) as usize;
         if !within_duration(playable_samples, rate) || playable_samples > MAX_DECODED_SAMPLES {
             return Err(codec_error("decoded audio exceeds the five minute limit"));
