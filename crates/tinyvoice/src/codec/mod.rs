@@ -329,26 +329,7 @@ fn decode_symphonia(
                     .is_ok_and(|kind| kind == mp4::TrackType::Audio)
             })
             .ok_or_else(|| codec_error("M4A audio track is missing"))?;
-        let (duration_units, duration_timescale) = audio_track
-            .trak
-            .edts
-            .as_ref()
-            .and_then(|edts| edts.elst.as_ref())
-            .and_then(|elst| elst.entries.first())
-            .map(|entry| (entry.segment_duration, mp4.timescale()))
-            .unwrap_or((
-                audio_track.trak.mdia.mdhd.duration,
-                audio_track.trak.mdia.mdhd.timescale,
-            ));
-        let duration_denominator = u128::from(duration_timescale);
-        if duration_timescale == 0
-            || u128::from(duration_units) > u128::from(MAX_DURATION_SECONDS) * duration_denominator
-        {
-            return Err(codec_error("M4A duration exceeds the five minute limit"));
-        }
-        let playable_samples = (u128::from(duration_units) * u128::from(rate)
-            / u128::from(duration_timescale))
-        .min(samples.len() as u128) as usize;
+        let playable_samples = m4a_playable_samples(&mp4, audio_track, rate, samples.len())?;
         if !within_duration(playable_samples, rate) || playable_samples > MAX_DECODED_SAMPLES {
             return Err(codec_error("decoded audio exceeds the five minute limit"));
         }
@@ -363,6 +344,37 @@ fn decode_symphonia(
         rate,
         u16::try_from(channel_count).map_err(codec_error_from)?,
     ))
+}
+
+fn m4a_playable_samples(
+    mp4: &mp4::Mp4Reader<Cursor<Vec<u8>>>,
+    audio_track: &mp4::Mp4Track,
+    rate: u32,
+    decoded_samples: usize,
+) -> Result<usize> {
+    let (duration_units, duration_timescale) = audio_track
+        .trak
+        .edts
+        .as_ref()
+        .and_then(|edts| edts.elst.as_ref())
+        .and_then(|elst| elst.entries.first())
+        .map_or(
+            (
+                audio_track.trak.mdia.mdhd.duration,
+                audio_track.trak.mdia.mdhd.timescale,
+            ),
+            |entry| (entry.segment_duration, mp4.timescale()),
+        );
+    if duration_timescale == 0
+        || u128::from(duration_units)
+            > u128::from(MAX_DURATION_SECONDS) * u128::from(duration_timescale)
+    {
+        return Err(codec_error("M4A duration exceeds the five minute limit"));
+    }
+    Ok(
+        (u128::from(duration_units) * u128::from(rate) / u128::from(duration_timescale))
+            .min(decoded_samples as u128) as usize,
+    )
 }
 
 fn decode_packets(
