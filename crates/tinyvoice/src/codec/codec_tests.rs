@@ -122,7 +122,12 @@ fn m4a_duration_uses_the_selected_symphonia_track_id() -> Result<()> {
     let (_, samples, rate, _) = decode_symphonia(&bytes, AudioCodec::M4aAac, "m4a")?;
     let expected = m4a_playable_samples(&mp4, selected_track_id, rate, usize::MAX)?;
     assert_eq!(samples.len(), expected);
-    assert_eq!(expected, usize::try_from(selected.duration().as_micros() * u128::from(rate) / 1_000_000).map_err(codec_error_from)?);
+    let media_duration = selected.trak.mdia.mdhd.duration;
+    let media_timescale = selected.trak.mdia.mdhd.timescale;
+    assert_eq!(
+        u128::try_from(expected).map_err(codec_error_from)?,
+        u128::from(media_duration) * u128::from(rate) / u128::from(media_timescale)
+    );
     Ok(())
 }
 
