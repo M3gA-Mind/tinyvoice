@@ -19,7 +19,9 @@ use symphonia::core::{
 
 #[cfg(feature = "amr-nb")]
 use codec_core::{
-    codecs::amr::{AmrCodec, AmrFrameType, AmrMode, AmrPayloadFrame, AmrVariant, storage},
+    codecs::amr::{
+        AmrCodec, AmrFrameType, AmrMode, AmrPayloadFrame, AmrStorageReader, AmrVariant, storage,
+    },
     types::{CodecConfig, CodecType, CodedFrame, FrameKind, VariableRateCodec},
 };
 
