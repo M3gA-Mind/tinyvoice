@@ -18,8 +18,8 @@ decode use Symphonia; AAC-LC encoding uses `oxideav-aac`; and the `mp4` crate
 muxes AAC access units. These are Rust dependencies enabled by default in the
 library, so codec support is available without a system FFmpeg install or
 native codec library. The optional `amr-nb` feature uses the pure-Rust
-`rvoip-codec-core` implementation and requires Rust 1.91; builds without it
-retain the library's earlier minimum Rust version. A Linux x86_64 release build of `tinyvoice-module`
+`rvoip-codec-core` implementation and raises the library and module minimum
+Rust version to 1.91. A Linux x86_64 release build of `tinyvoice-module`
 measured 20.8 MiB total / 7.8 MiB `.text` with `cargo bloat`; its report
 attributed 618.7 KiB `.text` to `opus-pure` and 118.7 KiB to `oxideav-aac`
 (Symphonia's decoder is split across several crates). This is the complete

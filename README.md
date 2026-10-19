@@ -20,12 +20,13 @@ So the default crate build is synchronous, I/O-free and runtime-free. It does
 not open a microphone, call an STT or TTS endpoint, or know what a `Config` is.
 The optional `hotkey` feature adds a host-facing global keyboard listener. The
 optional `capture` feature adds microphone capture when a host supplies a
-permission check.
+permission check. The optional `amr-nb` feature adds pure-Rust AMR-NB codec
+support and requires Rust 1.91.
 
 | Here | With the host |
 | --- | --- |
 | WAV framing, RMS, resampling, downmix, silence gate; module-owned capture threads | Microphone permission decisions through the computer module |
-| In-memory WAV/PCM16, Ogg/Opus, and M4A/AAC-LC probe, transcode, and waveform APIs | Codec calls through the `tinyvoice-bus` module contract |
+| In-memory WAV/PCM16, Ogg/Opus, M4A/AAC-LC, and optional AMR-NB probe, transcode, and waveform APIs | Codec calls through the `tinyvoice-bus` module contract |
 | VAD segmentation | The capture loop that drives it |
 | Wake-word gate, intent routing | What to *do* with an intent |
 | Hallucination detection | The STT transport, credentials, and retry policy |

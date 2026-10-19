@@ -309,11 +309,11 @@ fn amr_nb_storage_decode_matches_pinned_3gpp_reference_pcm() -> Result<()> {
 fn amr_nb_encoding_matches_pinned_3gpp_mode_seven_storage() -> Result<()> {
     let source = include_bytes!("../../tests/fixtures/amr/amrnb_encoder_input.pcm");
     let expected = include_bytes!("../../tests/fixtures/amr/amrnb_encoder_mode7_reference.amr");
-    let samples: Vec<f32> = source
+    let samples: Vec<i16> = source
         .chunks_exact(2)
-        .map(|pair| f32::from(i16::from_le_bytes([pair[0], pair[1]])) / 32_767.0)
+        .map(|pair| i16::from_le_bytes([pair[0], pair[1]]))
         .collect();
-    let wav = audio::f32_mono_to_wav(&samples, AMR_NB_RATE)?;
+    let wav = audio::pcm16_to_wav(&samples, AMR_NB_RATE, 1)?;
     let encoded = transcode(&wav, AudioCodec::WavPcm16, AudioCodec::AmrNb)?;
     assert_eq!(encoded, expected);
     Ok(())
