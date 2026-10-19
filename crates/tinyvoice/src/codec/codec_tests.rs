@@ -308,6 +308,29 @@ fn amr_nb_storage_decode_matches_pinned_3gpp_reference_pcm() -> Result<()> {
 
 #[test]
 #[cfg(feature = "amr-nb")]
+fn amr_nb_storage_decode_handles_bad_quality_and_no_data_frames() -> Result<()> {
+    let reference = include_bytes!("../../tests/fixtures/amr/amrnb_mode0.amr");
+    let mut reader = AmrStorageReader::new(reference).map_err(codec_error_from)?;
+    let mut frames = Vec::new();
+    while let Some(frame) = reader.next_frame().map_err(codec_error_from)? {
+        frames.push(frame);
+    }
+    frames[0].quality_ok = false;
+    frames.push(AmrPayloadFrame::no_data());
+
+    let encoded = storage::write(AmrVariant::NarrowBand, &frames).map_err(codec_error_from)?;
+    let (codec, decoded, rate, channels) = decode_amr_nb(&encoded)?;
+    assert_eq!(codec, AudioCodec::AmrNb);
+    assert_eq!(rate, AMR_NB_RATE);
+    assert_eq!(channels, 1);
+    assert_eq!(decoded.len(), frames.len() * AMR_NB_FRAME_SAMPLES);
+    assert!(decoded.iter().all(|sample| sample.is_finite()));
+    assert_eq!(probe(&encoded)?.duration_ms, 520);
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "amr-nb")]
 fn amr_nb_encoding_matches_pinned_3gpp_mode_seven_storage() -> Result<()> {
     let source = include_bytes!("../../tests/fixtures/amr/amrnb_encoder_input.pcm");
     let expected = include_bytes!("../../tests/fixtures/amr/amrnb_encoder_mode7_reference.amr");
