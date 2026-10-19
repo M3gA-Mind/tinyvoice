@@ -1,6 +1,6 @@
 [package]
 name = "tinyvoice"
-version = "0.3.2"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.91"
 license = "GPL-3.0-only"
@@ -16,7 +16,7 @@ categories = ["multimedia::audio"]
 serde_json = "1"
 # Shared wire payloads live in a transport-free crate; this adds no TinyBus
 # runtime or module SDK dependency to the voice library.
-tinyvoice-bus = { version = "0.1.4", path = "../tinyvoice-bus" }
+tinyvoice-bus = { version = "0.2.0", path = "../tinyvoice-bus" }
 # Derive macros for the crate-wide error type in `src/error/mod.rs`.
 thiserror = "2"
 # Pure-Rust Opus encoding, decoding, and Ogg encapsulation for voice clips.
