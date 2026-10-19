@@ -1,6 +1,6 @@
 # Codec test fixtures
 
-`voice-envelope.wav` is a deterministic, locally generated 2.371-second mono
+`voice-envelope.wav` is a deterministic, locally generated 2.370-second mono
 PCM voice-band signal. Its harmonics and alternating voiced/silent sections
 exercise multiframe encoding, duration clipping, and envelope retention without
 network access or third-party audio provenance.

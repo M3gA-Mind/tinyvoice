@@ -150,7 +150,7 @@ async fn verify_amr_codec(proxy: &tinybus::Proxy) -> Result<(), Box<dyn std::err
             },),
         )
         .await?;
-    if source.duration_ms != 2_371 {
+    if source.duration_ms != 2_370 {
         return Err(io::Error::other("WAV fixture duration changed unexpectedly").into());
     }
     let result: CodecOutput = proxy

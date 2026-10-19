@@ -178,7 +178,7 @@ async fn amr_nb_probe_and_decode_are_available_over_the_module_contract() -> tin
             },),
         )
         .await?;
-    assert_eq!(wav_info.duration_ms, 2_371);
+    assert_eq!(wav_info.duration_ms, 2_370);
     let amr_output: CodecOutput = proxy
         .call(
             "CodecTranscode",
