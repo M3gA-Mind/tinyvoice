@@ -31,6 +31,8 @@ pub enum AudioCodec {
     M4aAac,
     /// MPEG Layer III audio (typically returned by text-to-speech services).
     Mp3,
+    /// AMR-NB audio in its storage format, used by DingTalk voice messages.
+    AmrNb,
 }
 
 /// Container facts obtained by [`probe`].
@@ -95,6 +97,7 @@ pub fn transcode(bytes: &[u8], from: AudioCodec, target: AudioCodec) -> Result<V
         AudioCodec::OggOpus => encode_opus(&samples),
         AudioCodec::M4aAac => encode_aac_m4a(&samples),
         AudioCodec::Mp3 => Err(codec_error("MP3 encoding is not supported")),
+        AudioCodec::AmrNb => Err(codec_error("AMR-NB encoding is not supported yet")),
     }
 }
 
@@ -177,6 +180,8 @@ fn decode(bytes: &[u8]) -> Result<(AudioCodec, Vec<f32>, u32, u16)> {
         decode_symphonia(bytes, AudioCodec::M4aAac, "m4a")
     } else if looks_like_mp3(bytes) {
         decode_symphonia(bytes, AudioCodec::Mp3, "mp3")
+    } else if bytes.starts_with(b"#!AMR\n") {
+        Err(codec_error("AMR-NB decoding is not supported yet"))
     } else {
         Err(codec_error("unsupported audio container"))
     }
@@ -198,6 +203,9 @@ fn decode_as(bytes: &[u8], expected: AudioCodec) -> Result<(AudioCodec, Vec<f32>
             decode_symphonia(bytes, AudioCodec::M4aAac, "m4a")
         }
         AudioCodec::Mp3 if looks_like_mp3(bytes) => decode_symphonia(bytes, AudioCodec::Mp3, "mp3"),
+        AudioCodec::AmrNb if bytes.starts_with(b"#!AMR\n") => {
+            Err(codec_error("AMR-NB decoding is not supported yet"))
+        }
         _ => {
             return Err(codec_error(
                 "audio input does not match the declared source codec",

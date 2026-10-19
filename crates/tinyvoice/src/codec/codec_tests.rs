@@ -259,6 +259,32 @@ fn same_format_aac_transcode_normalizes_stereo_to_mono_48khz() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn amr_nb_transcode_produces_probeable_storage_audio_with_measured_duration() -> Result<()> {
+    let samples: Vec<f32> = (0..8_000)
+        .map(|index| {
+            let phase = std::f32::consts::TAU * 440.0 * index as f32 / 8_000.0;
+            phase.sin() * 0.5
+        })
+        .collect();
+    let wav = audio::f32_mono_to_wav(&samples, 8_000)?;
+
+    let amr = transcode(&wav, AudioCodec::WavPcm16, AudioCodec::AmrNb)?;
+    assert!(amr.starts_with(b"#!AMR\n"), "AMR storage header is present");
+    let info = probe(&amr)?;
+    assert_eq!(info.codec, AudioCodec::AmrNb);
+    assert_eq!(info.sample_rate, 8_000);
+    assert_eq!(info.channels, 1);
+    assert!((990..=1_000).contains(&info.duration_ms));
+
+    let decoded_wav = transcode(&amr, AudioCodec::AmrNb, AudioCodec::WavPcm16)?;
+    let decoded_info = probe(&decoded_wav)?;
+    assert_eq!(decoded_info.codec, AudioCodec::WavPcm16);
+    assert!((990..=1_000).contains(&decoded_info.duration_ms));
+    assert!(waveform(&amr, 16)?.iter().any(|peak| *peak > 0));
+    Ok(())
+}
+
 fn stereo_aac_fixture() -> Result<Vec<u8>> {
     let (bytes, duration_samples) = stereo_aac_muxed_fixture()?;
     repair_m4a(bytes, duration_samples)
