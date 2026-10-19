@@ -331,6 +331,42 @@ fn amr_nb_storage_decode_handles_bad_quality_and_no_data_frames() -> Result<()> 
 
 #[test]
 #[cfg(feature = "amr-nb")]
+fn amr_nb_storage_decode_preserves_reference_dtx_and_comfort_noise() -> Result<()> {
+    let encoded = include_bytes!("../../tests/fixtures/amr/amrnb_dtx_mode0.amr");
+    let expected = include_bytes!("../../tests/fixtures/amr/amrnb_dtx_mode0_reference.pcm");
+    let (variant, frames) = storage::read(encoded).map_err(codec_error_from)?;
+    assert_eq!(variant, AmrVariant::NarrowBand);
+    let mut frame_kinds = [0usize; 3];
+    for frame in &frames {
+        match frame.frame_type {
+            AmrFrameType::Speech(_) => frame_kinds[0] += 1,
+            AmrFrameType::Sid(AmrVariant::NarrowBand) => frame_kinds[1] += 1,
+            AmrFrameType::NoData => frame_kinds[2] += 1,
+            other => return Err(codec_error(format!("unexpected AMR-NB frame {other:?}"))),
+        }
+    }
+    assert_eq!(frame_kinds, [75, 12, 63]);
+
+    let (codec, decoded, rate, channels) = decode_amr_nb(encoded)?;
+    assert_eq!(codec, AudioCodec::AmrNb);
+    assert_eq!(rate, AMR_NB_RATE);
+    assert_eq!(channels, 1);
+    assert_eq!(probe(encoded)?.duration_ms, 3_000);
+    assert_eq!(expected.len(), decoded.len() * 2);
+    let (reference_samples, reference_remainder) = expected.as_chunks::<2>();
+    assert_eq!(reference_remainder, &[] as &[u8]);
+    for (actual, reference) in decoded.iter().zip(reference_samples) {
+        let pcm = i16::from_le_bytes([reference[0], reference[1]]);
+        assert_eq!(actual.to_bits(), (f32::from(pcm) / 32_768.0).to_bits());
+    }
+
+    let peaks = waveform(encoded, 16)?;
+    assert!(peaks.iter().any(|peak| *peak > 0));
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "amr-nb")]
 fn amr_nb_encoding_matches_pinned_3gpp_mode_seven_storage() -> Result<()> {
     let source = include_bytes!("../../tests/fixtures/amr/amrnb_encoder_input.pcm");
     let expected = include_bytes!("../../tests/fixtures/amr/amrnb_encoder_mode7_reference.amr");

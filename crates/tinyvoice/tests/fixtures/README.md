@@ -30,3 +30,11 @@ signed 16-bit audio).
 are the matching 3GPP encoder input and mode-7 reference output from the same
 crate and source commit. They pin AMR storage encoding, not only self-roundtrip
 behavior.
+
+`amr/amrnb_dtx_mode0.amr` and `amr/amrnb_dtx_mode0_reference.pcm` are the
+mode-0 AMR-NB discontinuous-transmission stream and expected decoded PCM from
+the same pinned crate and source commit. The upstream decoder conformance test
+uses this stream to exercise speech, SID comfort-noise, and `NO_DATA` frames;
+the 1,116-byte AMR stream carries 150 frames (3 seconds at 8 kHz mono), and
+the 48,000-byte PCM reference contains the corresponding 24,000 signed
+16-bit samples. They are retained under the same MIT attribution above.
