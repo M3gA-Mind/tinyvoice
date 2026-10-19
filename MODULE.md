@@ -4,7 +4,7 @@ This package contains the native `tinyvoice` module for TinyBus module ABI v1.
 Install only the archive matching the host operating system and architecture.
 
 The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
-`/ai/tinyhumans/tinyvoice/Voice`, and provides 56 methods under contract 1.11.
+`/ai/tinyhumans/tinyvoice/Voice`, and provides 56 methods under contract 1.12.
 
 ## Methods
 
