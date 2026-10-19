@@ -321,6 +321,29 @@ fn amr_nb_encoding_matches_pinned_3gpp_mode_seven_storage() -> Result<()> {
 
 #[test]
 #[cfg(feature = "amr-nb")]
+fn amr_nb_transcode_resamples_and_downmixes_to_the_platform_rate() -> Result<()> {
+    let stereo: Vec<i16> = (0usize..48_000)
+        .flat_map(|index| {
+            let sample = if (index / 24).is_multiple_of(2) {
+                10_000
+            } else {
+                -10_000
+            };
+            [sample, sample]
+        })
+        .collect();
+    let wav = audio::pcm16_to_wav(&stereo, 48_000, 2)?;
+    let amr = transcode(&wav, AudioCodec::WavPcm16, AudioCodec::AmrNb)?;
+    let info = probe(&amr)?;
+    assert_eq!(info.codec, AudioCodec::AmrNb);
+    assert_eq!(info.sample_rate, AMR_NB_RATE);
+    assert_eq!(info.channels, 1);
+    assert_eq!(info.duration_ms, 1_000);
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "amr-nb")]
 fn amr_nb_storage_rejects_truncated_reserved_and_over_duration_frames() {
     let mut truncated = b"#!AMR\n".to_vec();
     truncated.push(0x04);
