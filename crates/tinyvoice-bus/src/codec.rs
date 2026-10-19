@@ -71,4 +71,3 @@ pub struct WaveformResult {
     /// Peak values in the range 0 through 255.
     pub peaks: Vec<u8>,
 }
-

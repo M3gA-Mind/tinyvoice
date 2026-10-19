@@ -20,7 +20,10 @@ use symphonia::core::{
 #[cfg(feature = "amr-nb")]
 use rvoip_codec_core::{
     codecs::amr::{AmrCodec, AmrFrameType, AmrMode, AmrPayloadFrame, AmrVariant, storage},
-    types::{AudioCodec as AmrAudioCodec, CodedFrame, CodecConfig, CodecType, FrameKind, VariableRateCodec},
+    types::{
+        AudioCodec as AmrAudioCodec, CodecConfig, CodecType, CodedFrame, FrameKind,
+        VariableRateCodec,
+    },
 };
 
 use crate::{Error, Result, audio};
@@ -217,9 +220,7 @@ fn decode_as(bytes: &[u8], expected: AudioCodec) -> Result<(AudioCodec, Vec<f32>
             decode_symphonia(bytes, AudioCodec::M4aAac, "m4a")
         }
         AudioCodec::Mp3 if looks_like_mp3(bytes) => decode_symphonia(bytes, AudioCodec::Mp3, "mp3"),
-        AudioCodec::AmrNb if bytes.starts_with(b"#!AMR\n") => {
-            decode_amr_nb(bytes)
-        }
+        AudioCodec::AmrNb if bytes.starts_with(b"#!AMR\n") => decode_amr_nb(bytes),
         _ => {
             return Err(codec_error(
                 "audio input does not match the declared source codec",
@@ -282,11 +283,7 @@ fn decode_amr_nb(bytes: &[u8]) -> Result<(AudioCodec, Vec<f32>, u32, u16)> {
         return Err(codec_error("AMR-WB storage is not supported"));
     }
     let mut frame_count = 0usize;
-    while validation
-        .next_frame()
-        .map_err(codec_error_from)?
-        .is_some()
-    {
+    while validation.next_frame().map_err(codec_error_from)?.is_some() {
         frame_count = frame_count
             .checked_add(1)
             .ok_or_else(|| codec_error("AMR-NB frame count overflow"))?;
@@ -319,14 +316,13 @@ fn decode_amr_nb(bytes: &[u8]) -> Result<(AudioCodec, Vec<f32>, u32, u16)> {
         if decoded.len() != AMR_NB_FRAME_SAMPLES {
             return Err(codec_error("AMR-NB decoder returned an invalid frame size"));
         }
-        samples.extend(decoded.into_iter().map(|sample| f32::from(sample) / 32_768.0));
+        samples.extend(
+            decoded
+                .into_iter()
+                .map(|sample| f32::from(sample) / 32_768.0),
+        );
     }
-    Ok((
-        AudioCodec::AmrNb,
-        samples,
-        AMR_NB_RATE,
-        1,
-    ))
+    Ok((AudioCodec::AmrNb, samples, AMR_NB_RATE, 1))
 }
 
 #[cfg(not(feature = "amr-nb"))]
