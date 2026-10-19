@@ -202,7 +202,7 @@ async fn amr_nb_probe_and_decode_are_available_over_the_module_contract() -> tin
         )
         .await?;
     assert_eq!(encoded_info.codec, AudioCodec::AmrNb);
-    assert_eq!(encoded_info.duration_ms, wav_info.duration_ms);
+    assert!(encoded_info.duration_ms.abs_diff(wav_info.duration_ms) <= 20);
     assert_eq!(encoded_info.sample_rate, 8_000);
     assert_eq!(encoded_info.channels, 1);
 

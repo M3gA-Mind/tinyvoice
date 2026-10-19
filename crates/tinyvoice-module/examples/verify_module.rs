@@ -4,10 +4,15 @@ use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use base64::Engine as _;
 use tinybus::Connection;
 use tinybus::broker::Broker;
 use tinybus::module::ModuleHost;
 use tinybus::transport::memory::MemoryBus;
+use tinyvoice_bus::{
+    AudioCodec, CodecInfo, CodecInput, CodecOutput, CodecTranscodeRequest, WaveformRequest,
+    WaveformResult,
+};
 
 // Imported, never redeclared. A local copy of these is exactly how this
 // example once ended up dialling `/ai.tinyhumans.tinyvoice.Voice` — a bus name
@@ -60,6 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             io::Error::other(format!("module returned an unexpected intent: {intent}")).into(),
         );
     }
+    verify_amr_codec(&proxy).await?;
 
     let declared: Vec<_> = info
         .manifest
@@ -130,6 +136,63 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info.name
     );
     broker_task.abort();
+    Ok(())
+}
+
+async fn verify_amr_codec(proxy: &tinybus::Proxy) -> Result<(), Box<dyn std::error::Error>> {
+    let wav = include_bytes!("../../tinyvoice/tests/fixtures/voice-envelope.wav");
+    let wav_base64 = base64::engine::general_purpose::STANDARD.encode(wav);
+    let source: CodecInfo = proxy
+        .call(
+            "CodecProbe",
+            (CodecInput {
+                audio_base64: wav_base64.clone(),
+            },),
+        )
+        .await?;
+    let result: CodecOutput = proxy
+        .call(
+            "CodecTranscode",
+            (CodecTranscodeRequest {
+                audio_base64: wav_base64,
+                from: AudioCodec::WavPcm16,
+                target: AudioCodec::AmrNb,
+            },),
+        )
+        .await?;
+    let encoded = base64::engine::general_purpose::STANDARD.decode(result.audio_base64)?;
+    if !encoded.starts_with(b"#!AMR\n") {
+        return Err(io::Error::other("loaded module returned invalid AMR storage").into());
+    }
+
+    let info: CodecInfo = proxy
+        .call(
+            "CodecProbe",
+            (CodecInput {
+                audio_base64: base64::engine::general_purpose::STANDARD.encode(&encoded),
+            },),
+        )
+        .await?;
+    if info.codec != AudioCodec::AmrNb
+        || info.duration_ms.abs_diff(source.duration_ms) > 20
+        || info.sample_rate != 8_000
+        || info.channels != 1
+    {
+        return Err(io::Error::other("loaded module returned incorrect AMR metadata").into());
+    }
+
+    let waveform: WaveformResult = proxy
+        .call(
+            "CodecWaveform",
+            (WaveformRequest {
+                audio_base64: base64::engine::general_purpose::STANDARD.encode(encoded),
+                buckets: 64,
+            },),
+        )
+        .await?;
+    if waveform.peaks.len() != 64 || !waveform.peaks.iter().any(|peak| *peak > 0) {
+        return Err(io::Error::other("loaded module returned an invalid AMR waveform").into());
+    }
     Ok(())
 }
 
