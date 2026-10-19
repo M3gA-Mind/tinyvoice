@@ -21,8 +21,7 @@ use symphonia::core::{
 use rvoip_codec_core::{
     codecs::amr::{AmrCodec, AmrFrameType, AmrMode, AmrPayloadFrame, AmrVariant, storage},
     types::{
-        AudioCodec as AmrAudioCodec, CodecConfig, CodecType, CodedFrame, FrameKind,
-        VariableRateCodec,
+        CodecConfig, CodecType, CodedFrame, FrameKind, VariableRateCodec,
     },
 };
 
