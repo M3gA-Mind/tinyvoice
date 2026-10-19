@@ -20,9 +20,7 @@ use symphonia::core::{
 #[cfg(feature = "amr-nb")]
 use codec_core::{
     codecs::amr::{AmrCodec, AmrFrameType, AmrMode, AmrPayloadFrame, AmrVariant, storage},
-    types::{
-        CodecConfig, CodecType, CodedFrame, FrameKind, VariableRateCodec,
-    },
+    types::{CodecConfig, CodecType, CodedFrame, FrameKind, VariableRateCodec},
 };
 
 use crate::{Error, Result, audio};

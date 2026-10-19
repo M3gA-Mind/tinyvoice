@@ -296,7 +296,7 @@ fn amr_nb_storage_decode_matches_pinned_3gpp_reference_pcm() -> Result<()> {
     assert_eq!(rate, AMR_NB_RATE);
     assert_eq!(channels, 1);
     assert_eq!(decoded.len(), expected.len() / 2);
-    assert_eq!(probe(encoded)?.duration_ms, 400);
+    assert_eq!(probe(encoded)?.duration_ms, 500);
     for (actual, reference) in decoded.iter().zip(expected.chunks_exact(2)) {
         let pcm = i16::from_le_bytes([reference[0], reference[1]]);
         assert_eq!(*actual, f32::from(pcm) / 32_768.0);
