@@ -11,7 +11,8 @@ outside 8–192 kHz are rejected.
 Opus and AAC voice encodes are mono 48 kHz; Opus uses the VoIP profile at
 24 kbps and AAC-LC uses 64 kbps. AMR-NB uses mono 8 kHz, 20 ms frames, and the
 RFC 4867 storage format (`#!AMR\n`); its measured duration comes from decoded
-frames. WAV-to-WAV passthrough preserves the original bytes.
+frames and rounds up to the next 20 ms frame. WAV-to-WAV passthrough preserves
+the original bytes.
 
 Opus encoding, decoding, and Ogg framing use `opus-pure`; M4A demux and AAC
 decode use Symphonia; AAC-LC encoding uses `oxideav-aac`; and the `mp4` crate
