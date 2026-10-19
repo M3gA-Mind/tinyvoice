@@ -278,20 +278,31 @@ fn encode_amr_nb(_samples: &[f32]) -> Result<Vec<u8>> {
 
 #[cfg(feature = "amr-nb")]
 fn decode_amr_nb(bytes: &[u8]) -> Result<(AudioCodec, Vec<f32>, u32, u16)> {
-    let mut reader = AmrStorageReader::new(bytes).map_err(codec_error_from)?;
-    if reader.variant() != AmrVariant::NarrowBand {
+    let mut validation = AmrStorageReader::new(bytes).map_err(codec_error_from)?;
+    if validation.variant() != AmrVariant::NarrowBand {
         return Err(codec_error("AMR-WB storage is not supported"));
     }
-    let mut codec = AmrCodec::new(&CodecConfig::new(CodecType::AmrNb)).map_err(codec_error_from)?;
-    let mut samples = Vec::new();
     let mut frame_count = 0usize;
-    while let Some(frame) = reader.next_frame().map_err(codec_error_from)? {
+    while validation
+        .next_frame()
+        .map_err(codec_error_from)?
+        .is_some()
+    {
         frame_count = frame_count
             .checked_add(1)
             .ok_or_else(|| codec_error("AMR-NB frame count overflow"))?;
         if frame_count > MAX_AMR_NB_FRAMES {
             return Err(codec_error("AMR-NB audio exceeds the five minute limit"));
         }
+    }
+    if frame_count == 0 {
+        return Err(codec_error("AMR-NB file contains no audio frames"));
+    }
+
+    let mut reader = AmrStorageReader::new(bytes).map_err(codec_error_from)?;
+    let mut codec = AmrCodec::new(&CodecConfig::new(CodecType::AmrNb)).map_err(codec_error_from)?;
+    let mut samples = Vec::with_capacity(frame_count * AMR_NB_FRAME_SAMPLES);
+    while let Some(frame) = reader.next_frame().map_err(codec_error_from)? {
         let coded = match frame.frame_type {
             AmrFrameType::Speech(mode) => CodedFrame::speech(mode.index(), frame.data),
             AmrFrameType::Sid(AmrVariant::NarrowBand) => CodedFrame::comfort_noise(frame.data),
@@ -310,9 +321,6 @@ fn decode_amr_nb(bytes: &[u8]) -> Result<(AudioCodec, Vec<f32>, u32, u16)> {
             return Err(codec_error("AMR-NB decoder returned an invalid frame size"));
         }
         samples.extend(decoded.into_iter().map(|sample| f32::from(sample) / 32_768.0));
-    }
-    if frame_count == 0 {
-        return Err(codec_error("AMR-NB file contains no audio frames"));
     }
     Ok((
         AudioCodec::AmrNb,

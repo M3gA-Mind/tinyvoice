@@ -23,3 +23,8 @@ identify the PCM as output from the 3GPP TS 26.073 reference decoder. The
 published crate is MIT-licensed; this test-only fixture is retained with that
 attribution. The AMR file is 331 bytes and the PCM is 8,000 bytes (400 ms of
 8 kHz mono signed 16-bit samples).
+
+`amr/amrnb_encoder_input.pcm` and `amr/amrnb_encoder_mode7_reference.amr`
+are the matching 3GPP encoder input and mode-7 reference output from the same
+crate and source commit. They pin AMR storage encoding, not only self-roundtrip
+behavior.

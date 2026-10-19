@@ -286,6 +286,55 @@ fn amr_nb_transcode_produces_probeable_storage_audio_with_measured_duration() ->
     Ok(())
 }
 
+#[test]
+#[cfg(feature = "amr-nb")]
+fn amr_nb_storage_decode_matches_pinned_3gpp_reference_pcm() -> Result<()> {
+    let encoded = include_bytes!("../../tests/fixtures/amr/amrnb_mode0.amr");
+    let expected = include_bytes!("../../tests/fixtures/amr/amrnb_mode0_reference.pcm");
+    let (codec, decoded, rate, channels) = decode_amr_nb(encoded)?;
+    assert_eq!(codec, AudioCodec::AmrNb);
+    assert_eq!(rate, AMR_NB_RATE);
+    assert_eq!(channels, 1);
+    assert_eq!(decoded.len(), expected.len() / 2);
+    assert_eq!(probe(encoded)?.duration_ms, 400);
+    for (actual, reference) in decoded.iter().zip(expected.chunks_exact(2)) {
+        let pcm = i16::from_le_bytes([reference[0], reference[1]]);
+        assert_eq!(*actual, f32::from(pcm) / 32_768.0);
+    }
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "amr-nb")]
+fn amr_nb_encoding_matches_pinned_3gpp_mode_seven_storage() -> Result<()> {
+    let source = include_bytes!("../../tests/fixtures/amr/amrnb_encoder_input.pcm");
+    let expected = include_bytes!("../../tests/fixtures/amr/amrnb_encoder_mode7_reference.amr");
+    let samples: Vec<f32> = source
+        .chunks_exact(2)
+        .map(|pair| f32::from(i16::from_le_bytes([pair[0], pair[1]])) / 32_767.0)
+        .collect();
+    let wav = audio::f32_mono_to_wav(&samples, AMR_NB_RATE)?;
+    let encoded = transcode(&wav, AudioCodec::WavPcm16, AudioCodec::AmrNb)?;
+    assert_eq!(encoded, expected);
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "amr-nb")]
+fn amr_nb_storage_rejects_truncated_reserved_and_over_duration_frames() {
+    let mut truncated = b"#!AMR\n".to_vec();
+    truncated.push(0x04);
+    assert!(probe(&truncated).is_err());
+
+    let mut reserved = b"#!AMR\n".to_vec();
+    reserved.push(9 << 3);
+    assert!(probe(&reserved).is_err());
+
+    let mut over_duration = b"#!AMR\n".to_vec();
+    over_duration.extend(std::iter::repeat_n(15 << 3 | 0x04, MAX_AMR_NB_FRAMES + 1));
+    assert!(probe(&over_duration).is_err());
+}
+
 fn stereo_aac_fixture() -> Result<Vec<u8>> {
     let (bytes, duration_samples) = stereo_aac_muxed_fixture()?;
     repair_m4a(bytes, duration_samples)
