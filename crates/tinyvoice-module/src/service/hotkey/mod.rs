@@ -13,7 +13,7 @@ use tinyvoice_bus::{
 mod native;
 
 const MAX_RESERVATIONS: usize = 16;
-const RESERVATION_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+const RESERVATION_TTL: std::time::Duration = std::time::Duration::from_mins(1);
 const MAX_KEY_BYTES: usize = 128;
 const MAX_HANDLE_BYTES: usize = 32;
 const MAX_FEED_FACTS: usize = 64;
