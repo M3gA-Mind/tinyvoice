@@ -166,6 +166,52 @@ async fn voice_note_codec_methods_are_available_over_the_module_contract() -> ti
 }
 
 #[tokio::test]
+async fn amr_nb_probe_and_decode_are_available_over_the_module_contract() -> tinybus::Result<()> {
+    let proxy = connect().await?;
+    let amr = include_bytes!("../../../tinyvoice/tests/fixtures/amr/amrnb_mode0.amr");
+    let encoded = BASE64.encode(amr);
+
+    let info: CodecInfo = proxy
+        .call(
+            "CodecProbe",
+            (CodecInput {
+                audio_base64: encoded.clone(),
+            },),
+        )
+        .await?;
+    assert_eq!(info.codec, AudioCodec::AmrNb);
+    assert_eq!(info.duration_ms, 400);
+    assert_eq!(info.sample_rate, 8_000);
+    assert_eq!(info.channels, 1);
+
+    let wav: CodecOutput = proxy
+        .call(
+            "CodecTranscode",
+            (CodecTranscodeRequest {
+                audio_base64: encoded,
+                from: AudioCodec::AmrNb,
+                target: AudioCodec::WavPcm16,
+            },),
+        )
+        .await?;
+    let wav = BASE64
+        .decode(wav.audio_base64)
+        .expect("module returns valid base64");
+    assert!(wav.starts_with(b"RIFF"));
+    let decoded: CodecInfo = proxy
+        .call(
+            "CodecProbe",
+            (CodecInput {
+                audio_base64: BASE64.encode(wav),
+            },),
+        )
+        .await?;
+    assert_eq!(decoded.codec, AudioCodec::WavPcm16);
+    assert_eq!(decoded.duration_ms, 400);
+    Ok(())
+}
+
+#[tokio::test]
 async fn route_carries_the_payload_for_a_parameterised_intent() -> tinybus::Result<()> {
     let proxy = connect().await?;
     let json: String = proxy.call("Route", ("set volume to 40",)).await?;
