@@ -1,4 +1,6 @@
-use super::*;
+//! Stable wire tags for codec requests crossing the module boundary.
+
+use tinyvoice_bus::CodecTranscodeRequest;
 
 #[test]
 fn amr_nb_codec_tag_round_trips_in_transcode_requests() {

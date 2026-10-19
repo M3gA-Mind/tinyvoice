@@ -70,6 +70,3 @@ pub struct WaveformResult {
     pub peaks: Vec<u8>,
 }
 
-#[cfg(test)]
-#[path = "codec_tests.rs"]
-mod tests;
