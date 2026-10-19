@@ -262,9 +262,9 @@ fn same_format_aac_transcode_normalizes_stereo_to_mono_48khz() -> Result<()> {
 #[test]
 #[cfg(feature = "amr-nb")]
 fn amr_nb_transcode_produces_probeable_storage_audio_with_measured_duration() -> Result<()> {
-    let samples: Vec<f32> = (0..8_000)
+    let samples: Vec<f32> = (0u16..8_000)
         .map(|index| {
-            let phase = std::f32::consts::TAU * 440.0 * index as f32 / 8_000.0;
+            let phase = std::f32::consts::TAU * 440.0 * f32::from(index) / 8_000.0;
             phase.sin() * 0.5
         })
         .collect();

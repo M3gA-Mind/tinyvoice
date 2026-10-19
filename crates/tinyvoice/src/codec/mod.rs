@@ -59,8 +59,7 @@ const MAX_DECODED_SAMPLES: usize = 32_000_000;
 const MAX_DURATION_SECONDS: u64 = 300;
 const AMR_NB_RATE: u32 = 8_000;
 const AMR_NB_FRAME_SAMPLES: usize = 160;
-const MAX_AMR_NB_FRAMES: usize = MAX_DURATION_SECONDS as usize * AMR_NB_RATE as usize
-    / AMR_NB_FRAME_SAMPLES;
+const MAX_AMR_NB_FRAMES: usize = 15_000;
 const VOICE_RATE: u32 = 48_000;
 const OPUS_FRAME: usize = 960;
 const AAC_FRAME_SAMPLES: usize = 1024;
