@@ -295,6 +295,7 @@ fn decode_symphonia(
         AudioCodec::M4aAac => symphonia::core::codecs::audio::well_known::CODEC_ID_AAC,
         AudioCodec::Mp3 => symphonia::core::codecs::audio::well_known::CODEC_ID_MP3,
         AudioCodec::OggOpus => return Err(codec_error("Ogg Opus uses its dedicated decoder")),
+        AudioCodec::AmrNb => return Err(codec_error("AMR-NB uses its dedicated decoder")),
     };
     if codec_params.codec != expected_codec {
         return Err(codec_error(
