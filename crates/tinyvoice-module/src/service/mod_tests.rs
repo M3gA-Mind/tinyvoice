@@ -168,6 +168,56 @@ async fn voice_note_codec_methods_are_available_over_the_module_contract() -> ti
 #[tokio::test]
 async fn amr_nb_probe_and_decode_are_available_over_the_module_contract() -> tinybus::Result<()> {
     let proxy = connect().await?;
+    let wav = include_bytes!("../../../tinyvoice/tests/fixtures/voice-envelope.wav");
+    let wav_base64 = BASE64.encode(wav);
+    let wav_info: CodecInfo = proxy
+        .call(
+            "CodecProbe",
+            (CodecInput {
+                audio_base64: wav_base64.clone(),
+            },),
+        )
+        .await?;
+    let amr_output: CodecOutput = proxy
+        .call(
+            "CodecTranscode",
+            (CodecTranscodeRequest {
+                audio_base64: wav_base64,
+                from: AudioCodec::WavPcm16,
+                target: AudioCodec::AmrNb,
+            },),
+        )
+        .await?;
+    let encoded_amr = BASE64
+        .decode(amr_output.audio_base64)
+        .expect("module returns valid AMR base64");
+    assert!(encoded_amr.starts_with(b"#!AMR\n"));
+
+    let encoded_info: CodecInfo = proxy
+        .call(
+            "CodecProbe",
+            (CodecInput {
+                audio_base64: BASE64.encode(&encoded_amr),
+            },),
+        )
+        .await?;
+    assert_eq!(encoded_info.codec, AudioCodec::AmrNb);
+    assert_eq!(encoded_info.duration_ms, wav_info.duration_ms);
+    assert_eq!(encoded_info.sample_rate, 8_000);
+    assert_eq!(encoded_info.channels, 1);
+
+    let waveform: WaveformResult = proxy
+        .call(
+            "CodecWaveform",
+            (WaveformRequest {
+                audio_base64: BASE64.encode(&encoded_amr),
+                buckets: 64,
+            },),
+        )
+        .await?;
+    assert_eq!(waveform.peaks.len(), 64);
+    assert!(waveform.peaks.iter().any(|peak| *peak > 0));
+
     let amr = include_bytes!("../../../tinyvoice/tests/fixtures/amr/amrnb_mode0.amr");
     let encoded = BASE64.encode(amr);
 
