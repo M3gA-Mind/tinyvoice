@@ -349,7 +349,7 @@ async fn live_admission_rejects_changed_expired_and_oversized_inputs_before_conn
     bind.port.context_token = "known".into();
     bind.port.object_path = "invalid path".into();
     assert!(sessions.bind_transport(bind).is_err());
-    tokio::time::advance(std::time::Duration::from_secs(60)).await;
+    tokio::time::advance(std::time::Duration::from_mins(1)).await;
     assert!(sessions.start(request.clone()).is_err());
     sessions.release(request.handle).await?;
     Ok(())

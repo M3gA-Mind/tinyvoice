@@ -2,7 +2,7 @@
 //!
 //! The public functions accept byte slices and return owned values. They do no
 //! filesystem, device, network, process, or runtime work. Audio is normalized
-//! to mono 48 kHz for encoded voice-note output.
+//! to mono 48 kHz for Opus/AAC output and 8 kHz for AMR-NB output.
 
 use std::io::Cursor;
 
@@ -15,6 +15,14 @@ use symphonia::core::{
     formats::{FormatOptions, FormatReader, probe::Hint},
     io::MediaSourceStream,
     meta::MetadataOptions,
+};
+
+#[cfg(feature = "amr-nb")]
+use codec_core::{
+    codecs::amr::{
+        AmrCodec, AmrFrameType, AmrMode, AmrPayloadFrame, AmrStorageReader, AmrVariant, storage,
+    },
+    types::{CodecConfig, CodecType, CodedFrame, FrameKind, VariableRateCodec},
 };
 
 use crate::{Error, Result, audio};
@@ -31,6 +39,8 @@ pub enum AudioCodec {
     M4aAac,
     /// MPEG Layer III audio (typically returned by text-to-speech services).
     Mp3,
+    /// AMR-NB audio in its storage format, used by `DingTalk` voice messages.
+    AmrNb,
 }
 
 /// Container facts obtained by [`probe`].
@@ -49,6 +59,11 @@ pub struct AudioInfo {
 const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 const MAX_DECODED_SAMPLES: usize = 32_000_000;
 const MAX_DURATION_SECONDS: u64 = 300;
+const AMR_NB_RATE: u32 = 8_000;
+#[cfg(feature = "amr-nb")]
+const AMR_NB_FRAME_SAMPLES: usize = 160;
+#[cfg(feature = "amr-nb")]
+const MAX_AMR_NB_FRAMES: usize = 15_000;
 const VOICE_RATE: u32 = 48_000;
 const OPUS_FRAME: usize = 960;
 const AAC_FRAME_SAMPLES: usize = 1024;
@@ -74,8 +89,9 @@ pub fn probe(bytes: &[u8]) -> Result<AudioInfo> {
 /// Convert bytes in `from` format to the requested voice-note format.
 ///
 /// The declared source format is checked against the encoded input. Encoded
-/// output is mono 48 kHz; WAV-to-WAV requests preserve original bytes. MP3 is
-/// accepted as a source format but is not an encoding target.
+/// Opus/AAC output is mono 48 kHz; AMR-NB output is mono 8 kHz in 20 ms
+/// frames. WAV-to-WAV requests preserve the original bytes. MP3 is accepted as
+/// a source format but is not an encoding target.
 ///
 /// # Errors
 ///
@@ -85,16 +101,22 @@ pub fn transcode(bytes: &[u8], from: AudioCodec, target: AudioCodec) -> Result<V
     if source == target && source == AudioCodec::WavPcm16 {
         return Ok(bytes.to_vec());
     }
-    let samples = if rate == VOICE_RATE {
+    let target_rate = if target == AudioCodec::AmrNb {
+        AMR_NB_RATE
+    } else {
+        VOICE_RATE
+    };
+    let samples = if rate == target_rate {
         samples
     } else {
-        audio::resample(&samples, rate, VOICE_RATE)?
+        audio::resample(&samples, rate, target_rate)?
     };
     match target {
         AudioCodec::WavPcm16 => audio::f32_mono_to_wav(&samples, VOICE_RATE),
         AudioCodec::OggOpus => encode_opus(&samples),
         AudioCodec::M4aAac => encode_aac_m4a(&samples),
         AudioCodec::Mp3 => Err(codec_error("MP3 encoding is not supported")),
+        AudioCodec::AmrNb => encode_amr_nb(&samples),
     }
 }
 
@@ -177,6 +199,8 @@ fn decode(bytes: &[u8]) -> Result<(AudioCodec, Vec<f32>, u32, u16)> {
         decode_symphonia(bytes, AudioCodec::M4aAac, "m4a")
     } else if looks_like_mp3(bytes) {
         decode_symphonia(bytes, AudioCodec::Mp3, "mp3")
+    } else if bytes.starts_with(b"#!AMR\n") {
+        decode_amr_nb(bytes)
     } else {
         Err(codec_error("unsupported audio container"))
     }
@@ -198,6 +222,7 @@ fn decode_as(bytes: &[u8], expected: AudioCodec) -> Result<(AudioCodec, Vec<f32>
             decode_symphonia(bytes, AudioCodec::M4aAac, "m4a")
         }
         AudioCodec::Mp3 if looks_like_mp3(bytes) => decode_symphonia(bytes, AudioCodec::Mp3, "mp3"),
+        AudioCodec::AmrNb if bytes.starts_with(b"#!AMR\n") => decode_amr_nb(bytes),
         _ => {
             return Err(codec_error(
                 "audio input does not match the declared source codec",
@@ -212,6 +237,103 @@ fn looks_like_mp3(bytes: &[u8]) -> bool {
         || bytes
             .get(..2)
             .is_some_and(|header| header[0] == 0xff && header[1] & 0xe0 == 0xe0)
+}
+
+#[cfg(feature = "amr-nb")]
+fn encode_amr_nb(samples: &[f32]) -> Result<Vec<u8>> {
+    if samples.is_empty() {
+        return Err(codec_error("audio contains no samples"));
+    }
+    let frame_count = samples.len().div_ceil(AMR_NB_FRAME_SAMPLES);
+    if frame_count > MAX_AMR_NB_FRAMES {
+        return Err(codec_error("AMR-NB audio exceeds the five minute limit"));
+    }
+
+    let mut amr_codec =
+        AmrCodec::new(&CodecConfig::new(CodecType::AmrNb)).map_err(codec_error_from)?;
+    let mut frames = Vec::with_capacity(frame_count);
+    for chunk in samples.chunks(AMR_NB_FRAME_SAMPLES) {
+        let mut pcm = [0i16; AMR_NB_FRAME_SAMPLES];
+        for (destination, source) in pcm.iter_mut().zip(chunk) {
+            *destination = pcm16_sample(*source);
+        }
+        let coded_frame = amr_codec.encode_frame(&pcm).map_err(codec_error_from)?;
+        let frame_type = match coded_frame.kind {
+            FrameKind::Speech => AmrFrameType::Speech(
+                AmrMode::new(AmrVariant::NarrowBand, coded_frame.mode).map_err(codec_error_from)?,
+            ),
+            FrameKind::ComfortNoise => AmrFrameType::Sid(AmrVariant::NarrowBand),
+            FrameKind::NoData => AmrFrameType::NoData,
+            FrameKind::Lost => return Err(codec_error("AMR-NB encoder returned a lost frame")),
+        };
+        frames.push(
+            AmrPayloadFrame::new(frame_type, coded_frame.quality_ok, coded_frame.data)
+                .map_err(codec_error_from)?,
+        );
+    }
+    storage::write(AmrVariant::NarrowBand, &frames).map_err(codec_error_from)
+}
+
+#[cfg(not(feature = "amr-nb"))]
+fn encode_amr_nb(_samples: &[f32]) -> Result<Vec<u8>> {
+    Err(codec_error("AMR-NB codec support is not enabled"))
+}
+
+#[cfg(feature = "amr-nb")]
+fn decode_amr_nb(bytes: &[u8]) -> Result<(AudioCodec, Vec<f32>, u32, u16)> {
+    let mut validation = AmrStorageReader::new(bytes).map_err(codec_error_from)?;
+    if validation.variant() != AmrVariant::NarrowBand {
+        return Err(codec_error("AMR-WB storage is not supported"));
+    }
+    let mut frame_count = 0usize;
+    while validation.next_frame().map_err(codec_error_from)?.is_some() {
+        frame_count = frame_count
+            .checked_add(1)
+            .ok_or_else(|| codec_error("AMR-NB frame count overflow"))?;
+        if frame_count > MAX_AMR_NB_FRAMES {
+            return Err(codec_error("AMR-NB audio exceeds the five minute limit"));
+        }
+    }
+    if frame_count == 0 {
+        return Err(codec_error("AMR-NB file contains no audio frames"));
+    }
+
+    let mut reader = AmrStorageReader::new(bytes).map_err(codec_error_from)?;
+    let mut amr_codec =
+        AmrCodec::new(&CodecConfig::new(CodecType::AmrNb)).map_err(codec_error_from)?;
+    let mut samples = Vec::with_capacity(frame_count * AMR_NB_FRAME_SAMPLES);
+    while let Some(frame) = reader.next_frame().map_err(codec_error_from)? {
+        let coded_frame = match frame.frame_type {
+            AmrFrameType::Speech(mode) => CodedFrame::speech(mode.index(), frame.data),
+            AmrFrameType::Sid(AmrVariant::NarrowBand) => CodedFrame::comfort_noise(frame.data),
+            AmrFrameType::NoData => CodedFrame::no_data(),
+            AmrFrameType::SpeechLost | AmrFrameType::Sid(AmrVariant::WideBand) => {
+                return Err(codec_error("AMR storage frame does not match AMR-NB"));
+            }
+        };
+        let coded_frame = if frame.quality_ok {
+            coded_frame
+        } else {
+            coded_frame.with_bad_quality()
+        };
+        let decoded = amr_codec
+            .decode_frame(&coded_frame)
+            .map_err(codec_error_from)?;
+        if decoded.len() != AMR_NB_FRAME_SAMPLES {
+            return Err(codec_error("AMR-NB decoder returned an invalid frame size"));
+        }
+        samples.extend(
+            decoded
+                .into_iter()
+                .map(|sample| f32::from(sample) / 32_768.0),
+        );
+    }
+    Ok((AudioCodec::AmrNb, samples, AMR_NB_RATE, 1))
+}
+
+#[cfg(not(feature = "amr-nb"))]
+fn decode_amr_nb(_bytes: &[u8]) -> Result<(AudioCodec, Vec<f32>, u32, u16)> {
+    Err(codec_error("AMR-NB codec support is not enabled"))
 }
 
 fn decode_opus(bytes: &[u8]) -> Result<(Vec<f32>, u32, u16)> {
@@ -287,6 +409,7 @@ fn decode_symphonia(
         AudioCodec::M4aAac => symphonia::core::codecs::audio::well_known::CODEC_ID_AAC,
         AudioCodec::Mp3 => symphonia::core::codecs::audio::well_known::CODEC_ID_MP3,
         AudioCodec::OggOpus => return Err(codec_error("Ogg Opus uses its dedicated decoder")),
+        AudioCodec::AmrNb => return Err(codec_error("AMR-NB uses its dedicated decoder")),
     };
     if codec_params.codec != expected_codec {
         return Err(codec_error(

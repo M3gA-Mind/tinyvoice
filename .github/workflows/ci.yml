@@ -9,6 +9,22 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  amr-minimum-rust:
+    name: AMR minimum Rust (1.91)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@1.91.0
+      - name: Install native hotkey and capture prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxtst-dev libxi-dev
+      - name: Test AMR-enabled library and module on the declared minimum
+        run: |
+          cargo test --manifest-path crates/tinyvoice/Cargo.toml --all-features
+          cargo check --manifest-path crates/tinyvoice-module/Cargo.toml --all-targets --all-features
   module-ci:
     uses: tinyhumansai/.github/.github/workflows/module-ci.yml@4adc1080fb495098e7af1aade82ed7e6e3c69bb7
     with:

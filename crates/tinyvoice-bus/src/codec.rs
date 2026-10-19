@@ -14,6 +14,8 @@ pub enum AudioCodec {
     M4aAac,
     /// MPEG Layer III audio (source format).
     Mp3,
+    /// Adaptive Multi-Rate narrowband audio in its storage format.
+    AmrNb,
 }
 
 /// Input bytes encoded as standard Base64.

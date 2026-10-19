@@ -82,7 +82,7 @@ coverage exception; manager and processing code remain subject to the 90%
 per-file threshold.
 
 The release workflow installs ALSA development headers for Linux module builds.
-OpenHuman must pin a released artifact compatible with current contract 1.11
+OpenHuman must pin a released artifact compatible with current contract 1.12
 (this capture slice was introduced in 1.3) and verify its digest before
 switching callers. Module-owned hotkeys are specified in
 `hotkey-module-lifecycle.md`.

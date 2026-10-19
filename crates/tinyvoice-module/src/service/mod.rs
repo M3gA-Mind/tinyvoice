@@ -935,6 +935,7 @@ fn library_codec(codec: tinyvoice_bus::codec::AudioCodec) -> tinyvoice::codec::A
         tinyvoice_bus::codec::AudioCodec::OggOpus => tinyvoice::codec::AudioCodec::OggOpus,
         tinyvoice_bus::codec::AudioCodec::M4aAac => tinyvoice::codec::AudioCodec::M4aAac,
         tinyvoice_bus::codec::AudioCodec::Mp3 => tinyvoice::codec::AudioCodec::Mp3,
+        tinyvoice_bus::codec::AudioCodec::AmrNb => tinyvoice::codec::AudioCodec::AmrNb,
     }
 }
 
@@ -946,6 +947,7 @@ fn bus_codec(
         tinyvoice::codec::AudioCodec::OggOpus => Ok(tinyvoice_bus::codec::AudioCodec::OggOpus),
         tinyvoice::codec::AudioCodec::M4aAac => Ok(tinyvoice_bus::codec::AudioCodec::M4aAac),
         tinyvoice::codec::AudioCodec::Mp3 => Ok(tinyvoice_bus::codec::AudioCodec::Mp3),
+        tinyvoice::codec::AudioCodec::AmrNb => Ok(tinyvoice_bus::codec::AudioCodec::AmrNb),
         _ => Err(tinybus::Error::failed(
             "codec is not available on the voice bus",
         )),
