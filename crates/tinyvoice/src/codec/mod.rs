@@ -39,7 +39,7 @@ pub enum AudioCodec {
     M4aAac,
     /// MPEG Layer III audio (typically returned by text-to-speech services).
     Mp3,
-    /// AMR-NB audio in its storage format, used by DingTalk voice messages.
+    /// AMR-NB audio in its storage format, used by `DingTalk` voice messages.
     AmrNb,
 }
 
