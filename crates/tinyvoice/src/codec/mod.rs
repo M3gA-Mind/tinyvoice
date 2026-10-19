@@ -249,24 +249,25 @@ fn encode_amr_nb(samples: &[f32]) -> Result<Vec<u8>> {
         return Err(codec_error("AMR-NB audio exceeds the five minute limit"));
     }
 
-    let mut codec = AmrCodec::new(&CodecConfig::new(CodecType::AmrNb)).map_err(codec_error_from)?;
+    let mut amr_codec =
+        AmrCodec::new(&CodecConfig::new(CodecType::AmrNb)).map_err(codec_error_from)?;
     let mut frames = Vec::with_capacity(frame_count);
     for chunk in samples.chunks(AMR_NB_FRAME_SAMPLES) {
         let mut pcm = [0i16; AMR_NB_FRAME_SAMPLES];
         for (destination, source) in pcm.iter_mut().zip(chunk) {
             *destination = pcm16_sample(*source);
         }
-        let coded = codec.encode_frame(&pcm).map_err(codec_error_from)?;
-        let frame_type = match coded.kind {
+        let coded_frame = amr_codec.encode_frame(&pcm).map_err(codec_error_from)?;
+        let frame_type = match coded_frame.kind {
             FrameKind::Speech => AmrFrameType::Speech(
-                AmrMode::new(AmrVariant::NarrowBand, coded.mode).map_err(codec_error_from)?,
+                AmrMode::new(AmrVariant::NarrowBand, coded_frame.mode).map_err(codec_error_from)?,
             ),
             FrameKind::ComfortNoise => AmrFrameType::Sid(AmrVariant::NarrowBand),
             FrameKind::NoData => AmrFrameType::NoData,
             FrameKind::Lost => return Err(codec_error("AMR-NB encoder returned a lost frame")),
         };
         frames.push(
-            AmrPayloadFrame::new(frame_type, coded.quality_ok, coded.data)
+            AmrPayloadFrame::new(frame_type, coded_frame.quality_ok, coded_frame.data)
                 .map_err(codec_error_from)?,
         );
     }
@@ -298,10 +299,11 @@ fn decode_amr_nb(bytes: &[u8]) -> Result<(AudioCodec, Vec<f32>, u32, u16)> {
     }
 
     let mut reader = AmrStorageReader::new(bytes).map_err(codec_error_from)?;
-    let mut codec = AmrCodec::new(&CodecConfig::new(CodecType::AmrNb)).map_err(codec_error_from)?;
+    let mut amr_codec =
+        AmrCodec::new(&CodecConfig::new(CodecType::AmrNb)).map_err(codec_error_from)?;
     let mut samples = Vec::with_capacity(frame_count * AMR_NB_FRAME_SAMPLES);
     while let Some(frame) = reader.next_frame().map_err(codec_error_from)? {
-        let coded = match frame.frame_type {
+        let coded_frame = match frame.frame_type {
             AmrFrameType::Speech(mode) => CodedFrame::speech(mode.index(), frame.data),
             AmrFrameType::Sid(AmrVariant::NarrowBand) => CodedFrame::comfort_noise(frame.data),
             AmrFrameType::NoData => CodedFrame::no_data(),
@@ -309,12 +311,14 @@ fn decode_amr_nb(bytes: &[u8]) -> Result<(AudioCodec, Vec<f32>, u32, u16)> {
                 return Err(codec_error("AMR storage frame does not match AMR-NB"));
             }
         };
-        let coded = if frame.quality_ok {
-            coded
+        let coded_frame = if frame.quality_ok {
+            coded_frame
         } else {
-            coded.with_bad_quality()
+            coded_frame.with_bad_quality()
         };
-        let decoded = codec.decode_frame(&coded).map_err(codec_error_from)?;
+        let decoded = amr_codec
+            .decode_frame(&coded_frame)
+            .map_err(codec_error_from)?;
         if decoded.len() != AMR_NB_FRAME_SAMPLES {
             return Err(codec_error("AMR-NB decoder returned an invalid frame size"));
         }
