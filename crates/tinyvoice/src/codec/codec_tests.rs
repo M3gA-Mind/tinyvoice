@@ -260,6 +260,7 @@ fn same_format_aac_transcode_normalizes_stereo_to_mono_48khz() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "amr-nb")]
 fn amr_nb_transcode_produces_probeable_storage_audio_with_measured_duration() -> Result<()> {
     let samples: Vec<f32> = (0..8_000)
         .map(|index| {
@@ -275,12 +276,12 @@ fn amr_nb_transcode_produces_probeable_storage_audio_with_measured_duration() ->
     assert_eq!(info.codec, AudioCodec::AmrNb);
     assert_eq!(info.sample_rate, 8_000);
     assert_eq!(info.channels, 1);
-    assert!((990..=1_000).contains(&info.duration_ms));
+    assert_eq!(info.duration_ms, 1_000);
 
     let decoded_wav = transcode(&amr, AudioCodec::AmrNb, AudioCodec::WavPcm16)?;
     let decoded_info = probe(&decoded_wav)?;
     assert_eq!(decoded_info.codec, AudioCodec::WavPcm16);
-    assert!((990..=1_000).contains(&decoded_info.duration_ms));
+    assert_eq!(decoded_info.duration_ms, 1_000);
     assert!(waveform(&amr, 16)?.iter().any(|peak| *peak > 0));
     Ok(())
 }
