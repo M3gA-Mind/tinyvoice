@@ -339,7 +339,7 @@ async fn forgotten_bound_reservation_expires_and_closes_its_mechanical_socket()
 -> tinybus::Result<()> {
     let socket = Socket::default();
     let (sessions, _module, _host, handle, lease) = fixture(socket.clone()).await?;
-    tokio::time::advance(Duration::from_secs(60)).await;
+    tokio::time::advance(Duration::from_mins(1)).await;
     tokio::time::timeout(Duration::from_secs(1), socket.closed.notified())
         .await
         .map_err(|_| tinybus::Error::failed("fixture deadline"))?;
