@@ -31,7 +31,7 @@ mp4 = "0.14"
 bytes = "1"
 # Pure-Rust AMR-NB speech coding and RFC 4867 storage framing. Kept optional
 # so minimal library consumers do not compile a codec they do not use.
-rvoip-codec-core = { version = "0.4.0", default-features = false, features = ["amr-nb"], optional = true }
+codec-core = { package = "rvoip-codec-core", version = "0.4.0", default-features = false, features = ["amr-nb"], optional = true }
 
 # `hotkey` only: the global keyboard listener and its plumbing.
 rdev = { version = "0.5", optional = true }
@@ -57,7 +57,7 @@ hotkey = ["dep:rdev", "dep:log", "dep:parking_lot", "dep:serde", "dep:tokio"]
 # on Linux). Microphone permission is passed in by the host.
 capture = ["dep:cpal", "dep:log", "dep:parking_lot", "dep:tokio"]
 # DingTalk AMR-NB voice-note codec support. Its dependency requires Rust 1.91.
-amr-nb = ["dep:rvoip-codec-core"]
+amr-nb = ["dep:codec-core"]
 
 [lints]
 workspace = true

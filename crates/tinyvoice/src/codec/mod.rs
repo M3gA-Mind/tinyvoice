@@ -2,7 +2,7 @@
 //!
 //! The public functions accept byte slices and return owned values. They do no
 //! filesystem, device, network, process, or runtime work. Audio is normalized
-//! to mono 48 kHz for encoded voice-note output.
+//! to mono 48 kHz for Opus/AAC output and 8 kHz for AMR-NB output.
 
 use std::io::Cursor;
 
@@ -18,7 +18,7 @@ use symphonia::core::{
 };
 
 #[cfg(feature = "amr-nb")]
-use rvoip_codec_core::{
+use codec_core::{
     codecs::amr::{AmrCodec, AmrFrameType, AmrMode, AmrPayloadFrame, AmrVariant, storage},
     types::{
         CodecConfig, CodecType, CodedFrame, FrameKind, VariableRateCodec,
@@ -60,7 +60,9 @@ const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 const MAX_DECODED_SAMPLES: usize = 32_000_000;
 const MAX_DURATION_SECONDS: u64 = 300;
 const AMR_NB_RATE: u32 = 8_000;
+#[cfg(feature = "amr-nb")]
 const AMR_NB_FRAME_SAMPLES: usize = 160;
+#[cfg(feature = "amr-nb")]
 const MAX_AMR_NB_FRAMES: usize = 15_000;
 const VOICE_RATE: u32 = 48_000;
 const OPUS_FRAME: usize = 960;
@@ -87,8 +89,9 @@ pub fn probe(bytes: &[u8]) -> Result<AudioInfo> {
 /// Convert bytes in `from` format to the requested voice-note format.
 ///
 /// The declared source format is checked against the encoded input. Encoded
-/// output is mono 48 kHz; WAV-to-WAV requests preserve original bytes. MP3 is
-/// accepted as a source format but is not an encoding target.
+/// Opus/AAC output is mono 48 kHz; AMR-NB output is mono 8 kHz in 20 ms
+/// frames. WAV-to-WAV requests preserve the original bytes. MP3 is accepted as
+/// a source format but is not an encoding target.
 ///
 /// # Errors
 ///

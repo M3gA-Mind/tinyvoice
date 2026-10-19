@@ -17,12 +17,13 @@ repository dedicates its contents to CC0; the notice is included as
 
 `amr/amrnb_mode0.amr` and `amr/amrnb_mode0_reference.pcm` are the mode-0
 AMR-NB storage stream and expected decoded PCM from
-[`rvoip-codec-core` 0.4.0](https://github.com/voicetastic/rvoip), pinned at
+[`rvoip-codec-core` 0.4.0](https://github.com/eisenzopf/rvoip/tree/f4d528eaabbac935bce9a6404d3ce4fdec35ed0f), pinned at
 source commit `f4d528eaabbac935bce9a6404d3ce4fdec35ed0f`. The upstream tests
 identify the PCM as output from the 3GPP TS 26.073 reference decoder. The
 published crate is MIT-licensed; this test-only fixture is retained with that
-attribution. The AMR file is 331 bytes and the PCM is 8,000 bytes (400 ms of
-8 kHz mono signed 16-bit samples).
+attribution in [`amr/LICENSE-MIT.txt`](amr/LICENSE-MIT.txt). The AMR file is
+331 bytes and the PCM is 8,000 bytes (4,000 samples, or 500 ms of 8 kHz mono
+signed 16-bit audio).
 
 `amr/amrnb_encoder_input.pcm` and `amr/amrnb_encoder_mode7_reference.amr`
 are the matching 3GPP encoder input and mode-7 reference output from the same
