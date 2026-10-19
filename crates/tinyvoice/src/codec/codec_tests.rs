@@ -298,7 +298,7 @@ fn amr_nb_storage_decode_matches_pinned_3gpp_reference_pcm() -> Result<()> {
     assert_eq!(decoded.len(), expected.len() / 2);
     assert_eq!(probe(encoded)?.duration_ms, 500);
     let (reference_samples, reference_remainder) = expected.as_chunks::<2>();
-    assert!(reference_remainder.is_empty());
+    assert_eq!(reference_remainder, []);
     for (actual, reference) in decoded.iter().zip(reference_samples) {
         let pcm = i16::from_le_bytes([reference[0], reference[1]]);
         assert_eq!(actual.to_bits(), (f32::from(pcm) / 32_768.0).to_bits());
@@ -312,7 +312,7 @@ fn amr_nb_encoding_matches_pinned_3gpp_mode_seven_storage() -> Result<()> {
     let source = include_bytes!("../../tests/fixtures/amr/amrnb_encoder_input.pcm");
     let expected = include_bytes!("../../tests/fixtures/amr/amrnb_encoder_mode7_reference.amr");
     let (source_samples, source_remainder) = source.as_chunks::<2>();
-    assert!(source_remainder.is_empty());
+    assert_eq!(source_remainder, []);
     let samples: Vec<i16> = source_samples
         .iter()
         .map(|pair| i16::from_le_bytes(*pair))
