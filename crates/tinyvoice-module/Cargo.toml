@@ -27,7 +27,7 @@ native-hotkeys = []
 # the recorded canonical TinyAgents submodule.
 tinyagents-live = ">=2.1.4, <3"
 tinyagents-harness = ">=2.1.4, <3"
-tinytools = "0.5"
+tinytools = "0.6"
 async-trait = "0.1"
 anyhow = "1"
 
@@ -96,3 +96,6 @@ tinytools = { path = "../../vendor/tinyagents/vendor/tinytools/crates/tinytools"
 tinybus = { path = "../../vendor/tinybus/crates/tinybus" }
 tinybus-module = { path = "../../vendor/tinybus/crates/tinybus-module" }
 tinybus-macros = { path = "../../vendor/tinybus/crates/tinybus-macros" }
+
+[patch."https://github.com/tinyhumansai/tinytools"]
+tinytools-agent = { path = "../../vendor/tinyagents/vendor/tinytools/crates/tinytools-agent" }
