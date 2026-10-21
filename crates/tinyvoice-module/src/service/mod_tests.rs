@@ -20,10 +20,32 @@ use tinybus::broker::Broker;
 use tinybus::transport::memory::MemoryBus;
 use tinybus::{Connection, Interface};
 use tinyvoice_bus::{
-    ActivationMode, HostKeyFact, HotkeyFeedRequest, HotkeyHandleRequest, HotkeyReadRequest,
-    HotkeyRequest, HotkeyReserveRequest, HotkeySource, SequencedHostFact,
+    ActivationMode, AudioCodec, CodecInfo, CodecInput, CodecOutput, CodecTranscodeRequest,
+    HostKeyFact, HotkeyFeedRequest, HotkeyHandleRequest, HotkeyReadRequest, HotkeyRequest,
+    HotkeyReserveRequest, HotkeySource, SequencedHostFact, WaveformRequest, WaveformResult,
 };
 use tinyvoice_bus::{BUS_NAME, OBJECT_PATH, names};
+
+#[tokio::test(flavor = "current_thread")]
+async fn codec_work_is_offloaded_and_rejects_when_capacity_is_full() {
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(1));
+    let held = semaphore
+        .clone()
+        .try_acquire_owned()
+        .expect("test takes the only codec worker slot");
+    assert!(
+        super::run_codec_worker(semaphore.clone(), || Ok(()))
+            .await
+            .is_err()
+    );
+    drop(held);
+
+    let executor_thread = std::thread::current().id();
+    let worker_thread = super::run_codec_worker(semaphore, || Ok(std::thread::current().id()))
+        .await
+        .expect("available codec worker runs");
+    assert_ne!(worker_thread, executor_thread);
+}
 
 /// A live bus with the interface served on it.
 ///
@@ -94,6 +116,149 @@ async fn route_returns_a_tagged_intent() -> tinybus::Result<()> {
     let value: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
 
     assert_eq!(value["intent"], "pause");
+    Ok(())
+}
+
+#[tokio::test]
+async fn voice_note_codec_methods_are_available_over_the_module_contract() -> tinybus::Result<()> {
+    let proxy = connect().await?;
+    let wav = include_bytes!("../../../tinyvoice/tests/fixtures/voice-envelope.wav");
+    let encoded = BASE64.encode(wav);
+
+    let info: CodecInfo = proxy
+        .call(
+            "CodecProbe",
+            (CodecInput {
+                audio_base64: encoded.clone(),
+            },),
+        )
+        .await?;
+    assert_eq!(info.codec, AudioCodec::WavPcm16);
+    assert_eq!(info.channels, 1);
+
+    let waveform: WaveformResult = proxy
+        .call(
+            "CodecWaveform",
+            (WaveformRequest {
+                audio_base64: encoded.clone(),
+                buckets: 256,
+            },),
+        )
+        .await?;
+    assert_eq!(waveform.peaks.len(), 256);
+    assert!(waveform.peaks.iter().any(|peak| *peak > 0));
+
+    let opus: CodecOutput = proxy
+        .call(
+            "CodecTranscode",
+            (CodecTranscodeRequest {
+                audio_base64: encoded,
+                from: AudioCodec::WavPcm16,
+                target: AudioCodec::OggOpus,
+            },),
+        )
+        .await?;
+    let opus = base64::engine::general_purpose::STANDARD
+        .decode(opus.audio_base64)
+        .expect("module returns valid base64");
+    assert!(opus.starts_with(b"OggS"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn amr_nb_probe_and_decode_are_available_over_the_module_contract() -> tinybus::Result<()> {
+    let proxy = connect().await?;
+    let wav = include_bytes!("../../../tinyvoice/tests/fixtures/voice-envelope.wav");
+    let wav_base64 = BASE64.encode(wav);
+    let wav_info: CodecInfo = proxy
+        .call(
+            "CodecProbe",
+            (CodecInput {
+                audio_base64: wav_base64.clone(),
+            },),
+        )
+        .await?;
+    assert_eq!(wav_info.duration_ms, 2_370);
+    let amr_output: CodecOutput = proxy
+        .call(
+            "CodecTranscode",
+            (CodecTranscodeRequest {
+                audio_base64: wav_base64,
+                from: AudioCodec::WavPcm16,
+                target: AudioCodec::AmrNb,
+            },),
+        )
+        .await?;
+    let encoded_amr = BASE64
+        .decode(amr_output.audio_base64)
+        .expect("module returns valid AMR base64");
+    assert!(encoded_amr.starts_with(b"#!AMR\n"));
+
+    let encoded_info: CodecInfo = proxy
+        .call(
+            "CodecProbe",
+            (CodecInput {
+                audio_base64: BASE64.encode(&encoded_amr),
+            },),
+        )
+        .await?;
+    assert_eq!(encoded_info.codec, AudioCodec::AmrNb);
+    assert_eq!(encoded_info.duration_ms, 2_380);
+    assert_eq!(encoded_info.sample_rate, 8_000);
+    assert_eq!(encoded_info.channels, 1);
+
+    let waveform: WaveformResult = proxy
+        .call(
+            "CodecWaveform",
+            (WaveformRequest {
+                audio_base64: BASE64.encode(&encoded_amr),
+                buckets: 64,
+            },),
+        )
+        .await?;
+    assert_eq!(waveform.peaks.len(), 64);
+    assert!(waveform.peaks.iter().any(|peak| *peak > 0));
+
+    let amr = include_bytes!("../../../tinyvoice/tests/fixtures/amr/amrnb_mode0.amr");
+    let encoded = BASE64.encode(amr);
+
+    let info: CodecInfo = proxy
+        .call(
+            "CodecProbe",
+            (CodecInput {
+                audio_base64: encoded.clone(),
+            },),
+        )
+        .await?;
+    assert_eq!(info.codec, AudioCodec::AmrNb);
+    assert_eq!(info.duration_ms, 500);
+    assert_eq!(info.sample_rate, 8_000);
+    assert_eq!(info.channels, 1);
+
+    let wav: CodecOutput = proxy
+        .call(
+            "CodecTranscode",
+            (CodecTranscodeRequest {
+                audio_base64: encoded,
+                from: AudioCodec::AmrNb,
+                target: AudioCodec::WavPcm16,
+            },),
+        )
+        .await?;
+    let wav = BASE64
+        .decode(wav.audio_base64)
+        .expect("module returns valid base64");
+    assert!(wav.starts_with(b"RIFF"));
+    let decoded: CodecInfo = proxy
+        .call(
+            "CodecProbe",
+            (CodecInput {
+                audio_base64: BASE64.encode(wav),
+            },),
+        )
+        .await?;
+    assert_eq!(decoded.codec, AudioCodec::WavPcm16);
+    assert_eq!(decoded.duration_ms, 500);
     Ok(())
 }
 

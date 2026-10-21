@@ -14,7 +14,7 @@ use tinyvoice_bus::capture::{
 };
 
 const MAX_RESERVATIONS: usize = 16;
-const RESERVATION_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+const RESERVATION_TTL: std::time::Duration = std::time::Duration::from_mins(1);
 const MAX_OUTPUT_BYTES: usize = 32 * 1024 * 1024;
 const MAX_OUTPUTS: usize = 4;
 const MAX_READ_BYTES: usize = 256 * 1024;
