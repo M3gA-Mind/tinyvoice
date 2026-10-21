@@ -2,7 +2,7 @@
 
 [package]
 name = "tinyvoice-module"
-version = "0.3.2"
+version = "0.3.4"
 edition = "2024"
 rust-version = "1.88"
 license = "GPL-3.0-only"
@@ -27,7 +27,7 @@ native-hotkeys = []
 # the recorded canonical TinyAgents submodule.
 tinyagents-live = ">=2.1.4, <3"
 tinyagents-harness = ">=2.1.4, <3"
-tinytools = "0.5"
+tinytools = "0.6"
 async-trait = "0.1"
 anyhow = "1"
 
