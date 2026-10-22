@@ -26,6 +26,7 @@ struct Socket {
     delivery: DeliveryMode,
     unresponsive_close: bool,
     invalid_sequence: bool,
+    invalid_idle_sequence: bool,
 }
 
 #[tinybus::interface(name = "ai.tinyhumans.tinyvoice.LiveTransport")]
@@ -35,6 +36,12 @@ impl Socket {
         request: ReadLiveInputRequest,
     ) -> tinybus::Result<ReadLiveInputReply> {
         *self.polls.lock().await += 1;
+        if self.invalid_idle_sequence {
+            return Ok(ReadLiveInputReply {
+                sequence: request.acknowledged_frame + 1,
+                frame: None,
+            });
+        }
         Ok(ReadLiveInputReply {
             sequence: request.acknowledged_frame + if self.invalid_sequence { 2 } else { 1 },
             frame: Some(TransportFrame::Closed),
@@ -174,6 +181,28 @@ async fn noncontiguous_socket_input_fails_closed_without_applying_effects() -> t
         .lock()
         .map_err(|_| tinybus::Error::failed("fixture lock"))?
         .state = LiveState::Running;
+    tokio::time::timeout(Duration::from_secs(1), socket.closed.notified())
+        .await
+        .map_err(|_| tinybus::Error::failed("fixture deadline"))?;
+    assert_eq!(socket.attempts.load(Ordering::SeqCst), 0);
+    sessions.release(handle).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_idle_frame_that_advances_its_sequence_fails_closed() -> tinybus::Result<()> {
+    let socket = Socket {
+        invalid_idle_sequence: true,
+        ..Socket::default()
+    };
+    let (sessions, _module, _host, handle, lease) = fixture(socket.clone()).await?;
+    lease
+        .phase
+        .lock()
+        .map_err(|_| tinybus::Error::failed("fixture lock"))?
+        .state = LiveState::Running;
+    // An idle reply that skips a sequence number would let the next real
+    // frame land one past the host's ack; the transport closes instead.
     tokio::time::timeout(Duration::from_secs(1), socket.closed.notified())
         .await
         .map_err(|_| tinybus::Error::failed("fixture deadline"))?;
