@@ -135,7 +135,7 @@ impl Turns {
         state.leases.retain(|_, lease| {
             lease.phase.lock().is_ok_and(|phase| {
                 let keep = phase.state != RelayState::Reserved
-                    || lease.created.elapsed() < Duration::from_secs(60);
+                    || lease.created.elapsed() < Duration::from_mins(1);
                 if !keep {
                     lease.cancel();
                 }
@@ -221,7 +221,7 @@ impl Turns {
         if self.closed.load(Ordering::SeqCst)
             || lease.cancelled.load(Ordering::SeqCst)
             || phase.state != RelayState::Reserved
-            || lease.created.elapsed() >= Duration::from_secs(60)
+            || lease.created.elapsed() >= Duration::from_mins(1)
         {
             return Err(tinybus::Error::failed(
                 "relay reservation is closed or expired",

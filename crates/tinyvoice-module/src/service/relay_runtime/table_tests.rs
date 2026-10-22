@@ -51,7 +51,7 @@ async fn reservations_require_valid_fixed_limits_and_expire_without_evicting_run
         .state = RelayState::Running;
     turns.reserve()?;
     assert!(turns.reserve().is_err());
-    tokio::time::advance(Duration::from_secs(60)).await;
+    tokio::time::advance(Duration::from_mins(1)).await;
     turns.reserve()?;
     assert_eq!(
         turns.state.lock().map_err(|_| unavailable())?.leases.len(),
@@ -107,7 +107,7 @@ async fn relay_start_rejects_bad_timing_payload_changed_or_expired_inputs_before
     assert!(turns.release(handle.clone()).await.is_err());
     assert_eq!(turns.release(handle).await?.state, RelayState::Closed);
     let expired = turns.reserve()?.handle;
-    tokio::time::advance(Duration::from_secs(60)).await;
+    tokio::time::advance(Duration::from_mins(1)).await;
     assert!(turns.start(request(expired.clone())).is_err());
     turns.release(expired).await?;
     let no_connection = Turns::default();
