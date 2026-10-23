@@ -25,8 +25,8 @@ native-hotkeys = []
 # single TinyAgents, and two path copies of one package cannot both be written
 # to a lockfile. The `[patch.crates-io]` table below keeps standalone builds on
 # the recorded canonical TinyAgents submodule.
-tinyagents-live = ">=2.1.4, <3"
-tinyagents-harness = ">=2.1.4, <3"
+tinyagents-live = ">=3.0.0, <4"
+tinyagents-harness = ">=3.0.0, <4"
 tinytools = "0.6"
 async-trait = "0.1"
 anyhow = "1"
