@@ -4,12 +4,15 @@ This package contains the native `tinyvoice` module for TinyBus module ABI v1.
 Install only the archive matching the host operating system and architecture.
 
 The module claims `ai.tinyhumans.tinyvoice.Voice`, serves the object at
-`/ai/tinyhumans/tinyvoice/Voice`, and provides 53 methods under contract 1.10.
+`/ai/tinyhumans/tinyvoice/Voice`, and provides 56 methods under contract 1.12.
 
 ## Methods
 
 | Method | Arguments | Returns |
 | --- | --- | --- |
+| `CodecProbe` | `CodecInput { audio_base64 }` | `CodecInfo`: detected codec, duration, sample rate, channels |
+| `CodecTranscode` | `CodecTranscodeRequest { audio_base64, from, target }` | `CodecOutput { audio_base64 }` |
+| `CodecWaveform` | `WaveformRequest { audio_base64, buckets }` | `WaveformResult { peaks }` |
 | `Route` | `transcript` | JSON `VoiceIntent`, tagged by an `intent` field |
 | `ExtractCommand` | `transcript`, `wake_word` | The command after the wake word, or `""` |
 | `WakeWordPresent` | `transcript`, `wake_word` | `bool` |

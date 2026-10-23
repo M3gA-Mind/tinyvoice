@@ -57,6 +57,10 @@ pub enum Error {
     /// A microphone capture operation failed.
     #[error("capture failed: {0}")]
     Capture(String),
+
+    /// An encoded audio container or codec could not be read or written.
+    #[error("audio codec error: {0}")]
+    AudioCodec(String),
 }
 
 /// The result type returned by every fallible function in this crate.

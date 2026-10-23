@@ -2,7 +2,7 @@
 name = "tinyvoice"
 version = "0.3.2"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.91"
 license = "GPL-3.0-only"
 description = "Host-agnostic voice primitives: WAV framing, silence gating, voice-activity segmentation, command intent routing, and STT hallucination detection."
 repository = "https://github.com/tinyhumansai/tinyvoice"
@@ -16,9 +16,22 @@ categories = ["multimedia::audio"]
 serde_json = "1"
 # Shared wire payloads live in a transport-free crate; this adds no TinyBus
 # runtime or module SDK dependency to the voice library.
-tinyvoice-bus = { version = "0.1.4", path = "../tinyvoice-bus" }
+tinyvoice-bus = { version = "0.2.0", path = "../tinyvoice-bus" }
 # Derive macros for the crate-wide error type in `src/error/mod.rs`.
 thiserror = "2"
+# Pure-Rust Opus encoding, decoding, and Ogg encapsulation for voice clips.
+opus-pure = "0.2.2"
+# Pure-Rust AAC-LC encoder for M4A output.
+oxideav-aac = "0.1.7"
+# Pure-Rust audio container/codecs for AAC-in-M4A and PCM WAV input.
+symphonia = { version = "0.6.1", default-features = false, features = ["aac", "isomp4", "mp3", "pcm", "wav"] }
+# In-memory ISO-MP4 muxing for AAC access units.
+mp4 = "0.14"
+# MP4 sample payload buffer type used by the in-memory muxer.
+bytes = "1"
+# Pure-Rust AMR-NB speech coding and RFC 4867 storage framing. Kept optional
+# so minimal library consumers do not compile a codec they do not use.
+codec-core = { package = "rvoip-codec-core", version = "0.4.0", default-features = false, features = ["amr-nb"], optional = true }
 
 # `hotkey` only: the global keyboard listener and its plumbing.
 rdev = { version = "0.5", optional = true }
@@ -32,6 +45,7 @@ tokio = { version = "1", default-features = false, features = ["sync"], optional
 [dev-dependencies]
 # The `capture` tests drive async handles with `#[tokio::test]`.
 tokio = { version = "1", features = ["macros", "rt", "sync"] }
+opus-decoder = "0.1.1"
 
 [features]
 default = []
@@ -42,6 +56,8 @@ hotkey = ["dep:rdev", "dep:log", "dep:parking_lot", "dep:serde", "dep:tokio"]
 # Off by default: opening an audio device links the platform audio stack (ALSA
 # on Linux). Microphone permission is passed in by the host.
 capture = ["dep:cpal", "dep:log", "dep:parking_lot", "dep:tokio"]
+# DingTalk AMR-NB voice-note codec support. Its dependency requires Rust 1.91.
+amr-nb = ["dep:codec-core"]
 
 [lints]
 workspace = true

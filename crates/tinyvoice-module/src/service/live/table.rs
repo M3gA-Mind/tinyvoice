@@ -18,7 +18,7 @@ pub(super) const MAX_GROUPS: usize = 32;
 pub(super) const MAX_BATCH_BYTES: usize = 1024 * 1024;
 pub(super) const MAX_AUDIO_BYTES: usize = 64 * 1024;
 pub(super) const MAX_TEXT_BYTES: usize = 64 * 1024;
-const RESERVATION_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+const RESERVATION_TTL: std::time::Duration = std::time::Duration::from_mins(1);
 
 /// Mutable state never held across an await.
 pub(super) struct Phase {

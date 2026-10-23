@@ -8,6 +8,12 @@ pub const OBJECT_PATH: &str = "/ai/tinyhumans/tinyvoice/Voice";
 
 /// One constant per member of [`BUS_NAME`].
 pub mod methods {
+    /// Decode media and return its container and audio properties.
+    pub const CODEC_PROBE: &str = "CodecProbe";
+    /// Convert an in-memory voice-note audio payload.
+    pub const CODEC_TRANSCODE: &str = "CodecTranscode";
+    /// Decode media and return normalized waveform peak bytes.
+    pub const CODEC_WAVEFORM: &str = "CodecWaveform";
     /// Fix explicit host concurrency and reservation bounds.
     pub const RELAY_CONFIGURE: &str = "RelayConfigure";
     /// Reserve a relay turn before local-brain startup.
@@ -128,6 +134,9 @@ pub const METHODS: &[&str] = &[
     methods::CAPTURE_SHUTDOWN,
     methods::CAPTURE_START,
     methods::CAPTURE_STOP,
+    methods::CODEC_PROBE,
+    methods::CODEC_TRANSCODE,
+    methods::CODEC_WAVEFORM,
     methods::ENCODE_WAV,
     methods::ENCODE_WAV_PCM16,
     methods::EXTRACT_COMMAND,
