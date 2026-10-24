@@ -13,10 +13,10 @@ jobs:
     name: AMR minimum Rust (1.91)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@1.91.0
+      - uses: dtolnay/rust-toolchain@1.120.0
       - name: Install native hotkey and capture prerequisites
         run: |
           sudo apt-get update
